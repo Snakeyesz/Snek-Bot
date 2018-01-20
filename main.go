@@ -17,9 +17,7 @@ func main() {
 
 	// connect discord bot
 	err := discord.Open()
-	if err != nil {
-		panic(err)
-	}
+	utils.PanicCheck(err)
 
 	// Run bot until connection is closed or interupted
 	fmt.Println("Bot is now running.  Press CTRL-C to exit.")

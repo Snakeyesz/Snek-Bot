@@ -26,10 +26,7 @@ func GetAppConfigs() *gabs.Container {
 // Loads all application configuration from config file
 func loadAppConfiguration() {
 	data, err := gabs.ParseJSONFile("config.json")
-
-	if err != nil {
-		panic(err.Error())
-	}
+	PanicCheck(err)
 
 	appConfigs = data
 }
