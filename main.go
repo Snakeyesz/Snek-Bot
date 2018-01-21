@@ -6,16 +6,20 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/Snakeyesz/snek-bot/cache"
+	"github.com/Snakeyesz/snek-bot/components"
 	"github.com/Snakeyesz/snek-bot/utils"
 )
 
 // Bot Entry Point
 func main() {
 
-	// init discord
-	discord := utils.GetDiscordSession()
+	// Initialize components
+	components.LoadAppConfig()
+	components.InitDiscordBot()
 
 	// connect discord bot
+	discord := cache.GetDiscordSession()
 	err := discord.Open()
 	utils.PanicCheck(err)
 

@@ -19,6 +19,10 @@ func NetGet(url string) []byte {
 	return NetGetUA(url, DEFAULT_UA)
 }
 
+func NetGetFive(url string) []byte {
+	return NetGetUA(url, DEFAULT_UA)
+}
+
 // NetGetUA performs a GET request with a custom user-agent
 func NetGetUA(url string, useragent string) []byte {
 	// Allocate client
@@ -28,9 +32,7 @@ func NetGetUA(url string, useragent string) []byte {
 
 	// Prepare request
 	request, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		panic(err)
-	}
+	PanicCheck(err)
 
 	// Set custom UA
 	request.Header.Set("User-Agent", useragent)
