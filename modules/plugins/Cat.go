@@ -5,9 +5,10 @@ import (
 	"github.com/bwmarrin/discordgo"
 )
 
+// Plugin responds to command by displaying a image retrieved from http://random.cat/meow
 type Cat struct{}
 
-// will validate if the pass command is used for this plugin
+// Will validate if the pass command entered is used for this plugin
 func (c *Cat) ValidateCommand(command string) bool {
 	validCommands := []string{"meow", "cat", "randomcat"}
 
@@ -20,6 +21,7 @@ func (c *Cat) ValidateCommand(command string) bool {
 	return false
 }
 
+// Main Entry point for the plugin
 func (c *Cat) Action(command string, content string, msg *discordgo.Message, session *discordgo.Session) {
 	if c.ValidateCommand(command) == false {
 		return
