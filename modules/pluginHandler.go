@@ -31,7 +31,8 @@ var (
 	pluginList = []Plugin{
 		&plugins.Cat{},
 		&plugins.Pong{},
-		&plugins.Music{},
+		// &plugins.Music{},
+		&plugins.Airhorn{},
 	}
 )
 
