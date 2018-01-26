@@ -14,8 +14,9 @@ import (
 // Bot Entry Point
 func main() {
 
-	// Initialize components
+	// Initialize and loadcomponents
 	components.LoadAppConfig()
+	components.Loadi18nTranslations()
 	components.InitDiscordBot()
 
 	// connect discord bot
