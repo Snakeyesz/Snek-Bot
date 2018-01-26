@@ -19,10 +19,6 @@ func NetGet(url string) []byte {
 	return NetGetUA(url, DEFAULT_UA)
 }
 
-func NetGetFive(url string) []byte {
-	return NetGetUA(url, DEFAULT_UA)
-}
-
 // NetGetUA performs a GET request with a custom user-agent
 func NetGetUA(url string, useragent string) []byte {
 	// Allocate client
@@ -253,10 +249,8 @@ func NetPostUAWithError(url string, data string, useragent string) (result []byt
 }
 
 // GetJSON sends a GET request to $url, parses it and returns the JSON
-func GetJsonFromUrl(url string) *gabs.Container {
+func GetJsonFromUrl(url string) *gabs.Container, error {
 	// Parse json
 	json, err := gabs.ParseJSON(NetGet(url))
-	PanicCheck(err)
-
-	return json
+	return json, err
 }
