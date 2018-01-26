@@ -33,9 +33,9 @@ func InitDiscordBot() {
 
 // Adds event handlers to discord bot
 func addEventHandlers(discord *discordgo.Session) {
+
 	// add handlers
 	discord.AddHandler(messageCreate)
-
 }
 
 /**********************************
@@ -63,11 +63,7 @@ func messageCreate(s *discordgo.Session, msg *discordgo.MessageCreate) {
 			userText = strings.SplitN(trimmedMessage, " ", 2)[1]
 		}
 
+		// pass command to plugin handler
 		modules.CallBotPlugin(command, userText, msg.Message)
-
-		fmt.Println(trimmedMessage)
-		fmt.Println(command)
-		fmt.Println(userText)
-
 	}
 }

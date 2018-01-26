@@ -29,9 +29,17 @@ func (c *Cat) Action(command string, content string, msg *discordgo.Message, ses
 
 	session.ChannelTyping(msg.ChannelID)
 
-	json := utils.GetJsonFromUrl("http://random.cat/meow")
-	session.ChannelMessageSend(
-		msg.ChannelID,
-		"MEOW! :smiley_cat:\n"+json.Path("file").Data().(string),
-	)
+	json, err := utils.GetJsonFromUrl("http://random.cat/meow")
+	if err != nil {
+
+		session.ChannelMessageSend(
+			msg.ChannelID,
+			"MEOW! :smiley_cat:\n"+json.Path("file").Data().(string),
+		)
+	} else {
+		session.ChannelMessageSend(
+			msg.ChannelID,
+			"): something went retrieving the cat pic. sorry :/",
+		)
+	}
 }
