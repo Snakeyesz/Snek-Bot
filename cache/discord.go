@@ -14,8 +14,9 @@ var (
 
 func SetDiscordSession(s *discordgo.Session) {
 	sessionMutex.Lock()
+	defer sessionMutex.Unlock()
+
 	session = s
-	sessionMutex.Unlock()
 }
 
 func GetDiscordSession() *discordgo.Session {
@@ -23,7 +24,7 @@ func GetDiscordSession() *discordgo.Session {
 	defer sessionMutex.RUnlock()
 
 	if session == nil {
-		panic(errors.New("Tried to get discord session before cache#SetSession() was called"))
+		panic(errors.New("Discord component was not loaded before get attempt"))
 	}
 
 	return session
