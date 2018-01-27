@@ -1,7 +1,7 @@
 {
 	"bot": {
 		"voice": {
-			"no-voice-channel": "Please join a voice channel to run that command."
+			"no-target-voice-channel": "Please join a voice channel to run that command."
 		}
 	}
 }
