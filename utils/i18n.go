@@ -33,5 +33,5 @@ func Geti18nText(id string) string {
 }
 
 func Geti18nTextF(id string, replacements ...interface{}) string {
-	return fmt.Sprintf(GetText(id), replacements...)
+	return fmt.Sprintf(Geti18nText(id), replacements...)
 }

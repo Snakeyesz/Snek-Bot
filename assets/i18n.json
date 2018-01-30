@@ -3,5 +3,9 @@
 		"voice": {
 			"no-target-voice-channel": "Please join a voice channel to run that command."
 		}
+	},
+	"youtube": {
+		"no-video-information": "Unable to get video information.",
+		"invalid-url": "Invalid url, unable to get video information."
 	}
 }

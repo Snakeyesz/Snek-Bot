@@ -5,6 +5,7 @@ import (
 
 	"github.com/Jeffail/gabs"
 	"github.com/Snakeyesz/snek-bot/cache"
+	"github.com/Snakeyesz/snek-bot/utils"
 )
 
 // Load i18n cache from json file
@@ -14,5 +15,5 @@ func Loadi18nTranslations() {
 	json, err := gabs.ParseJSONFile("assets/i18n.json")
 	utils.PanicCheck(err)
 
-	cache.Seti18nTranslations(data)
+	cache.Seti18nTranslations(json)
 }
