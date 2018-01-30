@@ -86,7 +86,7 @@ func loadSound() {
 }
 
 // playSoundFile plays the current buffer to the provided channel.
-func playSoundFile(s *discordgo.Session, guildID, channelID string) {
+func playSoundFile(s *discordgo.Session, guildID string, channelID string) {
 
 	// Join the provided voice channel.
 	vc, err := s.ChannelVoiceJoin(guildID, channelID, false, true)
