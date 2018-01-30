@@ -8,15 +8,12 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/Snakeyesz/snek-bot/utils"
-	"github.com/bwmarrin/discordgo"
 	"github.com/parnurzeal/gorequest"
 )
 
-
 type stream map[string]string
 
-type youtube struct {
+type Youtube struct {
 	streamList []stream
 	videoID    string
 	videoInfo  string
@@ -24,40 +21,40 @@ type youtube struct {
 }
 
 // loadYoutubeVideoInfo will attempt to retrive load youtube video information based on given url or text
-func (y *youtube) loadYoutubeVideoInfo(userInput string) error {
+func (y *Youtube) LoadYoutubeVideoInfo(userInput string) (string, string, error) {
 
 	// check if the user is trying to pass a url, if not then search youtube for matching video and return that
 	if len(userInput) < 4 || userInput[:4] != "http" {
-		link, err := searchYoutube(userInput)
-		if err != nil {
-			return err
-		}
+		// link, err := y.searchYoutube(userInput)
+		// if err != nil {
+		// 	return "", nil, err
+		// }
 
-		y.videoURL = link
+		// y.videoURL = link
 
-	} else if !validateYoutubeUrl(url) {
+	} else if validateYoutubeUrl(userInput) == false {
 
-		return "", "", errors.New("Invalid Youtube URL")
+		return "", "", errors.New("youtube.invalid-url")
 	}
 
 	// set video url
 	y.videoURL = userInput
 
 	// set video id
-	err := y.setYoutubeID()
+	err := y.setYoutubeID(userInput)
 	if err != nil {
-		return err
+		return "", "", err
 	}
 
 	// get the video info from youtube
 	err = y.retrieveYoutubeInfo()
 	if err != nil {
-		return err
+		return "", "", err
 	}
 
 	err = y.setStreamList()
 	if err != nil {
-		return err
+		return "", "", err
 	}
 
 	targetStream := y.streamList[0]
@@ -66,7 +63,7 @@ func (y *youtube) loadYoutubeVideoInfo(userInput string) error {
 }
 
 // setYoutubeID takes a url, validates that "url" is a youtube url and then parses out and sets the video id
-func (y *youtube) setYoutubeID(url string) error {
+func (y *Youtube) setYoutubeID(url string) error {
 	if !validateYoutubeUrl(url) {
 		return errors.New("Invalid video UrL")
 	}
@@ -96,7 +93,7 @@ func (y *youtube) setYoutubeID(url string) error {
 }
 
 // setStreamList uses stream info to parse through and set streamlist
-func (y *youtube) setStreamList() error {
+func (y *Youtube) setStreamList() error {
 	response, err := url.ParseQuery(y.videoInfo)
 	if err != nil {
 		return err
@@ -109,7 +106,7 @@ func (y *youtube) setStreamList() error {
 		return err
 	}
 	// check if a fail was explicitly given and log the reason if one was given
-	if {
+	if status[0] != "ok" {
 		reason, ok := response["reason"]
 		if ok {
 			err = fmt.Errorf("'fail' response status found in the server's response, reason: '%s'", reason[0])
@@ -158,7 +155,7 @@ func (y *youtube) setStreamList() error {
 }
 
 // retrives youtube info from youtube.com/get_video_info based on video id
-func (y *youtube) retrieveYoutubeInfo() error {
+func (y *Youtube) retrieveYoutubeInfo() error {
 	url := "http://youtube.com/get_video_info?video_id=" + y.videoID
 	_, body, err := gorequest.New().Get(url).End()
 	if err != nil {
