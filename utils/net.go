@@ -249,7 +249,7 @@ func NetPostUAWithError(url string, data string, useragent string) (result []byt
 }
 
 // GetJSON sends a GET request to $url, parses it and returns the JSON
-func GetJsonFromUrl(url string) *gabs.Container, error {
+func GetJsonFromUrl(url string) (*gabs.Container, error) {
 	// Parse json
 	json, err := gabs.ParseJSON(NetGet(url))
 	return json, err
