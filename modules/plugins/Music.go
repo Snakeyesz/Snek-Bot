@@ -121,7 +121,7 @@ func createVoiceInstance(youtubeLink string, serverID string, vc *discordgo.Voic
 	vi.queue = lane.NewQueue()
 
 	vi.pcmChannel = make(chan []int16, 2)
-	go SendPCM(vi.voice, vi.pcmChannel)
+	go sendPCM(vi.voice, vi.pcmChannel)
 
 	vi.queue.Enqueue(youtubeLink)
 	vi.processQueue()
@@ -158,7 +158,6 @@ func (vi *voiceInstance) playVideo(url string) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != 200 {
-		log.Print(resp.StatusCode)
 		log.Printf("reading answer: non 200 status code received: '%s'", err)
 	}
 
@@ -204,7 +203,7 @@ func (vi *voiceInstance) playVideo(url string) {
 
 // SendPCM will receive on the provied channel encode
 // received PCM data into Opus then send that to Discordgo
-func SendPCM(v *discordgo.VoiceConnection, pcm <-chan []int16) {
+func sendPCM(v *discordgo.VoiceConnection, pcm <-chan []int16) {
 	mu.Lock()
 	if sendpcm || pcm == nil {
 		mu.Unlock()
