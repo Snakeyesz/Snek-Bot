@@ -6,6 +6,8 @@ package modules
  */
 
 import (
+	"strings"
+
 	"github.com/Snakeyesz/snek-bot/cache"
 	"github.com/Snakeyesz/snek-bot/modules/plugins"
 	"github.com/bwmarrin/discordgo"
@@ -27,6 +29,7 @@ type Plugin interface {
 	)
 }
 
+// List of active plugins
 var (
 	pluginList = []Plugin{
 		&plugins.Cat{},
@@ -40,6 +43,8 @@ var (
 // content - The content without command
 // msg     - The message object
 func CallBotPlugin(command string, content string, msg *discordgo.Message) {
+	// Convert to command to lowercase
+	command = strings.ToLower(command)
 
 	// Run plugins for the given command
 	for _, plugin := range pluginList {
