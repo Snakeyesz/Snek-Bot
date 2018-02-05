@@ -10,13 +10,11 @@ import (
 	"strconv"
 	"sync"
 
-	"github.com/otium/ytdl"
-
-	"github.com/layeh/gopus"
-	"github.com/oleiade/lane"
-
 	"github.com/Snakeyesz/snek-bot/utils"
 	"github.com/bwmarrin/discordgo"
+	"github.com/layeh/gopus"
+	"github.com/oleiade/lane"
+	"github.com/otium/ytdl"
 )
 
 // Plugin joins voice chat of the user that initiated it and plays music based on the passed link
@@ -41,19 +39,20 @@ var (
 
 // VoiceInstance is created for each connected server
 type voiceInstance struct {
-	discord      *discordgo.Session
-	queue        *lane.Queue
-	voice        *discordgo.VoiceConnection
-	pcmChannel   chan []int16
-	serverID     string
-	skip         bool
-	stop         bool
-	trackPlaying bool
+	discord         *discordgo.Session
+	queue           *lane.Queue
+	voiceConnection *discordgo.VoiceConnection
+	pcmChannel      chan []int16
+	serverID        string
+	skip            bool
+	stop            bool
+	pause           bool
+	trackPlaying    bool
 }
 
 // will validate if the pass command is used for this plugin
 func (p *Music) ValidateCommand(command string) bool {
-	validCommands := []string{"play", "stop"}
+	validCommands := []string{"play", "stop", "skip", "pause"}
 
 	for _, v := range validCommands {
 		if v == command {
@@ -70,64 +69,130 @@ func (p *Music) Action(command string, content string, msg *discordgo.Message, s
 		return
 	}
 
-	// If the message is "ping" reply with "Pong!"
-	if command == "play" {
+	channel, err := session.State.Channel(msg.ChannelID)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
 
-		// join the users channel
-		voiceConnection, err := utils.JoinUserVoiceChat(session, msg)
-		if err != nil {
-			utils.AlertUserOfError(err, session, msg)
-			return
-		}
+	// If the message is "ping" reply with "Pong!"
+	if command == "play" && len(content) > 0 {
+		fmt.Println("playing input")
 
 		video, err := ytdl.GetVideoInfo(content)
 		if err != nil {
-			utils.AlertUserOfError(err, session, msg)
+			utils.SendMessage(msg.ChannelID, err.Error())
 			return
 		}
 
+		// get the video data using an accepted format
 		for _, format := range video.Formats {
+
 			if format.AudioEncoding == "opus" || format.AudioEncoding == "aac" || format.AudioEncoding == "vorbis" {
+
 				data, err := video.GetDownloadURL(format)
 				if err != nil {
 					fmt.Println(err)
+					return
+				}
+
+				// join the users channel
+				voiceConnection, err := utils.JoinUserVoiceChat(msg)
+				if err != nil {
+					utils.SendMessage(msg.ChannelID, err.Error())
+					return
 				}
 
 				downloadLink := data.String()
-				fmt.Println(downloadLink)
-				// go playAudioFile(url, guild, channel, "youtube")
-				channel, err := session.State.Channel(msg.ChannelID)
-				go createVoiceInstance(downloadLink, channel.GuildID, voiceConnection)
+				if vc, ok := voiceInstances[channel.GuildID]; ok {
+
+					vc.queue.Enqueue(downloadLink)
+					utils.SendMessage(msg.ChannelID, "music.song-queued")
+				} else {
+
+					go createVoiceInstance(downloadLink, channel.GuildID, voiceConnection)
+				}
+
 				return
 			}
 		}
 
 	}
 
-	// If the message is "pong" reply with "Ping!"
+	if command == "play" {
+		fmt.Println("continue current song")
+		togglePauseSong(channel.GuildID, false)
+	}
+
 	if command == "stop" {
-		// session.ChannelMessageSend(msg.ChannelID, "Ping!")
+		stopSong(channel.GuildID)
+	}
+
+	if command == "skip" {
+		skipSong(channel.GuildID)
+	}
+
+	if command == "pause" {
+
+		togglePauseSong(channel.GuildID, true)
+	}
+
+	if command == "repeat" {
+
+	}
+
+	if command == "shuffle" {
+
 	}
 }
 
 // createVoiceInstance accepts both a youtube query and a server id, boots up the voice connection, and plays the track.
 func createVoiceInstance(youtubeLink string, serverID string, vc *discordgo.VoiceConnection) {
+	fmt.Println("Creating voice instance")
+	fmt.Println(voiceInstances)
 	vi := new(voiceInstance)
 	voiceInstances[serverID] = vi
-	vi.voice = vc
+	vi.voiceConnection = vc
 
-	fmt.Println("Connecting Voice...")
 	vi.serverID = serverID
 	vi.queue = lane.NewQueue()
 
 	vi.pcmChannel = make(chan []int16, 2)
-	go sendPCM(vi.voice, vi.pcmChannel)
+	go sendPCM(vi.voiceConnection, vi.pcmChannel)
 
 	vi.queue.Enqueue(youtubeLink)
 	vi.processQueue()
 }
 
+func stopSong(guildId string) {
+	fmt.Println("Stopping music")
+
+	if vi, ok := voiceInstances[guildId]; ok {
+
+		vi.stop = true
+		vi.voiceConnection.Disconnect()
+	}
+}
+
+func skipSong(guildId string) {
+	fmt.Println("skipping music")
+
+	if vi, ok := voiceInstances[guildId]; ok {
+
+		vi.skip = true
+	}
+}
+
+func togglePauseSong(guildId string, toggle bool) {
+	if vi, ok := voiceInstances[guildId]; ok {
+
+		vi.pause = toggle
+	}
+}
+
 func (vi *voiceInstance) processQueue() {
+	fmt.Println("processing queue")
+
 	if vi.trackPlaying == false {
 		for {
 			vi.skip = false
@@ -135,19 +200,19 @@ func (vi *voiceInstance) processQueue() {
 			if link == nil || vi.stop == true {
 				break
 			}
-			vi.playVideo(link.(string))
+			vi.playFromUrl(link.(string))
 		}
 
 		// No more tracks in queue? Cleanup.
 		fmt.Println("Closing connections")
 		close(vi.pcmChannel)
-		vi.voice.Close()
 		delete(voiceInstances, vi.serverID)
 		fmt.Println("Done")
 	}
 }
 
-func (vi *voiceInstance) playVideo(url string) {
+func (vi *voiceInstance) playFromUrl(url string) {
+	fmt.Println("playing form url")
 	vi.trackPlaying = true
 
 	resp, err := http.Get(url)
@@ -162,6 +227,7 @@ func (vi *voiceInstance) playVideo(url string) {
 	}
 
 	run = exec.Command("ffmpeg", "-i", "-", "-f", "s16le", "-ar", strconv.Itoa(frameRate), "-ac", strconv.Itoa(channels), "pipe:1")
+	fmt.Println(resp.Body)
 	run.Stdin = resp.Body
 	stdout, err := run.StdoutPipe()
 	if err != nil {
@@ -178,64 +244,80 @@ func (vi *voiceInstance) playVideo(url string) {
 	// buffer used during loop below
 	audiobuf := make([]int16, frameSize*channels)
 
-	vi.voice.Speaking(true)
-	defer vi.voice.Speaking(false)
+	err = vi.voiceConnection.Speaking(true)
 
+	if err != nil {
+		fmt.Printf("Couldn't set speaking %s \n", err)
+	}
+	defer vi.voiceConnection.Speaking(false)
+
+	fmt.Println("starting read loop")
 	for {
+
+		if vi.pause == true {
+			continue
+		}
+
 		// read data from ffmpeg stdout
 		err = binary.Read(stdout, binary.LittleEndian, &audiobuf)
 		if err == io.EOF || err == io.ErrUnexpectedEOF {
+			fmt.Println("EOF")
+			run.Process.Kill()
 			break
 		}
 		if err != nil {
 			fmt.Println("error reading from ffmpeg stdout :", err)
-			break
-		}
-		if vi.stop == true || vi.skip == true {
 			run.Process.Kill()
 			break
 		}
+		if vi.stop == true || vi.skip == true {
+			fmt.Println("stop")
+			run.Process.Kill()
+			break
+		}
+
 		vi.pcmChannel <- audiobuf
 	}
 
+	fmt.Println("read loop ended")
 	vi.trackPlaying = false
 }
 
 // SendPCM will receive on the provied channel encode
 // received PCM data into Opus then send that to Discordgo
 func sendPCM(v *discordgo.VoiceConnection, pcm <-chan []int16) {
-	mu.Lock()
-	if sendpcm || pcm == nil {
-		mu.Unlock()
+	if pcm == nil {
 		return
 	}
-	sendpcm = true
-	mu.Unlock()
-	defer func() { sendpcm = false }()
+
+	var err error
 
 	opusEncoder, err := gopus.NewEncoder(frameRate, channels, gopus.Audio)
+
 	if err != nil {
-		fmt.Println("NewEncoder Error:", err)
+		fmt.Println("NewEncoder Error", err)
 		return
 	}
 
 	for {
+
 		// read pcm from chan, exit if channel is closed.
 		recv, ok := <-pcm
 		if !ok {
-			fmt.Println("PCM Channel closed.")
+			fmt.Println("PCM Channel closed", nil)
 			return
 		}
 
 		// try encoding pcm frame with Opus
 		opus, err := opusEncoder.Encode(recv, frameSize, maxBytes)
 		if err != nil {
-			fmt.Println("Encoding Error:", err)
+			fmt.Println("Encoding Error", err)
 			return
 		}
 
 		if v.Ready == false || v.OpusSend == nil {
-			fmt.Printf("Discordgo not ready for opus packets. %+v : %+v", v.Ready, v.OpusSend)
+			// fmt.Println(fmt.Sprintf("Discordgo not ready for opus packets. %+v : %+v", v.Ready, v.OpusSend), nil)
+			// Sending errors here might not be suited
 			return
 		}
 		// send encoded opus data to the sendOpus channel

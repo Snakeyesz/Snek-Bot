@@ -7,5 +7,8 @@
 	"youtube": {
 		"no-video-information": "Unable to get video information.",
 		"invalid-url": "Invalid url, unable to get video information."
+	},
+	"music": {
+		"song-queued": "Your song has been queued"
 	}
 }
