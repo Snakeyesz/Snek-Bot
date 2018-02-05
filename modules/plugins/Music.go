@@ -2,6 +2,7 @@ package plugins
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -75,48 +76,32 @@ func (p *Music) Action(command string, content string, msg *discordgo.Message, s
 		return
 	}
 
-	// If the message is "ping" reply with "Pong!"
 	if command == "play" && len(content) > 0 {
 		fmt.Println("playing input")
 
-		video, err := ytdl.GetVideoInfo(content)
+		downloadLink, err := getDownloadUrl(content)
+		if err != nil {
+			utils.SendMessage(msg.ChannelID, "music.invalid-url")
+			return
+		}
+
+		// join the users channel
+		voiceConnection, err := utils.JoinUserVoiceChat(msg)
 		if err != nil {
 			utils.SendMessage(msg.ChannelID, err.Error())
 			return
 		}
 
-		// get the video data using an accepted format
-		for _, format := range video.Formats {
+		// if a voiceinstances already exists for the given server, add the song to queue.
+		//  Otherwise create voice instance
+		if vc, ok := voiceInstances[channel.GuildID]; ok {
 
-			if format.AudioEncoding == "opus" || format.AudioEncoding == "aac" || format.AudioEncoding == "vorbis" {
+			vc.queue.Enqueue(downloadLink)
+			utils.SendMessage(msg.ChannelID, "music.song-queued")
+		} else {
 
-				data, err := video.GetDownloadURL(format)
-				if err != nil {
-					fmt.Println(err)
-					return
-				}
-
-				// join the users channel
-				voiceConnection, err := utils.JoinUserVoiceChat(msg)
-				if err != nil {
-					utils.SendMessage(msg.ChannelID, err.Error())
-					return
-				}
-
-				downloadLink := data.String()
-				if vc, ok := voiceInstances[channel.GuildID]; ok {
-
-					vc.queue.Enqueue(downloadLink)
-					utils.SendMessage(msg.ChannelID, "music.song-queued")
-				} else {
-
-					go createVoiceInstance(downloadLink, channel.GuildID, voiceConnection)
-				}
-
-				return
-			}
+			go createVoiceInstance(downloadLink, channel.GuildID, voiceConnection)
 		}
-
 	}
 
 	if command == "play" {
@@ -133,7 +118,6 @@ func (p *Music) Action(command string, content string, msg *discordgo.Message, s
 	}
 
 	if command == "pause" {
-
 		togglePauseSong(channel.GuildID, true)
 	}
 
@@ -146,22 +130,29 @@ func (p *Music) Action(command string, content string, msg *discordgo.Message, s
 	}
 }
 
-// createVoiceInstance accepts both a youtube query and a server id, boots up the voice connection, and plays the track.
-func createVoiceInstance(youtubeLink string, serverID string, vc *discordgo.VoiceConnection) {
-	fmt.Println("Creating voice instance")
-	fmt.Println(voiceInstances)
-	vi := new(voiceInstance)
-	voiceInstances[serverID] = vi
-	vi.voiceConnection = vc
+// getDownloadUrl will get the download link for the users input.This can be a single video, a playlist, a text to search for, or an audio file
+func getDownloadUrl(userUrl string) (string, error) {
 
-	vi.serverID = serverID
-	vi.queue = lane.NewQueue()
+	video, err := ytdl.GetVideoInfo(userUrl)
+	if err != nil {
+		return "", err
+	}
 
-	vi.pcmChannel = make(chan []int16, 2)
-	go sendPCM(vi.voiceConnection, vi.pcmChannel)
+	// get the video data using an accepted format
+	for _, format := range video.Formats {
 
-	vi.queue.Enqueue(youtubeLink)
-	vi.processQueue()
+		if format.AudioEncoding == "opus" || format.AudioEncoding == "aac" || format.AudioEncoding == "vorbis" {
+
+			downloadLink, err := video.GetDownloadURL(format)
+			if err != nil {
+				fmt.Println(err)
+				return "", err
+			}
+
+			return downloadLink.String(), nil
+		}
+	}
+	return "", errors.New("music.no-video-information")
 }
 
 func stopSong(guildId string) {
@@ -190,6 +181,24 @@ func togglePauseSong(guildId string, toggle bool) {
 	}
 }
 
+// createVoiceInstance accepts both a youtube query and a server id, boots up the voice connection, and plays the track.
+func createVoiceInstance(youtubeLink string, serverID string, vc *discordgo.VoiceConnection) {
+	fmt.Println("Creating voice instance")
+	fmt.Println(voiceInstances)
+	vi := new(voiceInstance)
+	voiceInstances[serverID] = vi
+	vi.voiceConnection = vc
+
+	vi.serverID = serverID
+	vi.queue = lane.NewQueue()
+
+	vi.pcmChannel = make(chan []int16, 2)
+	go sendPCM(vi.voiceConnection, vi.pcmChannel)
+
+	vi.queue.Enqueue(youtubeLink)
+	vi.processQueue()
+}
+
 func (vi *voiceInstance) processQueue() {
 	fmt.Println("processing queue")
 
@@ -200,7 +209,7 @@ func (vi *voiceInstance) processQueue() {
 			if link == nil || vi.stop == true {
 				break
 			}
-			vi.playFromUrl(link.(string))
+			vi.startAudioStreamFromUrl(link.(string))
 		}
 
 		// No more tracks in queue? Cleanup.
@@ -211,7 +220,7 @@ func (vi *voiceInstance) processQueue() {
 	}
 }
 
-func (vi *voiceInstance) playFromUrl(url string) {
+func (vi *voiceInstance) startAudioStreamFromUrl(url string) {
 	fmt.Println("playing form url")
 	vi.trackPlaying = true
 
