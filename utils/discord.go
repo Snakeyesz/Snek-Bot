@@ -38,7 +38,13 @@ func JoinUserVoiceChat(msg *discordgo.Message) (*discordgo.VoiceConnection, erro
 
 			// join the voice channel and return a possible error
 			voiceConnection, err := session.ChannelVoiceJoin(guild.ID, voiceState.ChannelID, false, true)
-			return voiceConnection, err
+			if err == nil {
+
+				return voiceConnection, nil
+			} else {
+
+				return nil, errors.New("bot.voice.cant-join-voice")
+			}
 		}
 	}
 
