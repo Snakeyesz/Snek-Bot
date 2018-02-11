@@ -1,12 +1,19 @@
 {
 	"bot": {
 		"voice": {
-			"no-target-voice-channel": "Please join a voice channel to run that command."
+			"no-target-voice-channel": "Please join a voice channel to run that command.",
+			"cant-join-voice": "Unable to join voice channel.",
+			"bot-cant-speak": "Bot unable to speak in the voice channel."
 		}
 	},
 	"music": {
-		"song-queued": "Your song has been queued",
+		"song-queued": "Your song has been queued.",
 		"no-video-information": "Unable to get video information.",
-		"invalid-url": "No video information returned, please check url."
+		"invalid-url": "No video information returned, please check url.",
+		"repeat": {
+			"start": "Current song will be repeated.",
+			"end": "Ending song repeat",
+			"no-song-playing": "Can't repeat, no song currently playing."
+		}
 	}
 }
