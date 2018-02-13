@@ -51,10 +51,10 @@ func JoinUserVoiceChat(msg *discordgo.Message) (*discordgo.VoiceConnection, erro
 }
 
 // SendMessage alerts user of custom error if any exists
-func SendMessage(channelId string, message string) {
+func SendMessage(channelID string, message string) {
 	translations := cache.Geti18nTranslations()
 
-	cache.GetDiscordSession().ChannelTyping(msg.ChannelID)
+	cache.GetDiscordSession().ChannelTyping(channelID)
 
 	// check if the error code has a user translation
 	if translations.ExistsP(message) {
@@ -62,5 +62,5 @@ func SendMessage(channelId string, message string) {
 	}
 
 	// output translation to user
-	cache.GetDiscordSession().ChannelMessageSend(channelId, message)
+	cache.GetDiscordSession().ChannelMessageSend(channelID, message)
 }
