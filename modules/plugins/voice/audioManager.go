@@ -54,8 +54,8 @@ type voiceInstance struct {
 // PUBLIC FUNCTIONS //
 //////////////////////
 
-// GetVoiceInstance will return the voice instance or create one if doesn't exist for the given guild
-func GetVoiceInstance(guildID string, msg *discordgo.Message) *voiceInstance {
+// GetOrMakeVoiceInstance will return the voice instance or create one if doesn't exist for the given guild
+func GetOrMakeVoiceInstance(guildID string, msg *discordgo.Message) *voiceInstance {
 
 	// if the voiceinstance exists, return it
 	if vi, ok := voiceInstances[guildID]; ok {
@@ -148,15 +148,27 @@ func (vi *voiceInstance) processQueue() {
 	fmt.Println("processing queue")
 
 	if vi.trackPlaying == false {
+
+		// runs for each song in queue
 		for {
+			link := vi.queue.Head()
+
+			// if a new song is starting make sure next songs don't get skipped
 			vi.skip = false
 
-			link := vi.queue.Head()
-			if link == nil || vi.stop == true {
-				vi.queue.Dequeue()
+			// if stopping empty songs in queue and break song loop
+			if vi.stop == true {
+				vi.queue.Empty()
 				break
 			}
 
+			// if link is nil skip to next song
+			if link == nil {
+				vi.queue.Dequeue()
+				continue
+			}
+
+			// stream audio from song. long running, will block for loop until audio is done
 			vi.startAudioStreamFromUrl(link.(string))
 
 			if vi.repeat == false {
@@ -168,9 +180,23 @@ func (vi *voiceInstance) processQueue() {
 		fmt.Println("Closing connections")
 
 		if vi.stop == true {
+			close(vi.pcmChannel)
+			vi.pcmChannel = nil
 			vi.voiceConnection.Disconnect()
 		}
 	}
+
+	// reset voiceInstance
+	vi.resetVoiceInstance()
+}
+
+// resetVoiceInstance will reset some struct fields
+func (vi *voiceInstance) resetVoiceInstance() {
+	vi.stop = false
+	vi.pause = false
+	vi.repeat = false
+	vi.skip = false
+	vi.trackPlaying = false
 }
 
 // startAudioStreamFromUrl will start reading the buffer
@@ -181,7 +207,7 @@ func (vi *voiceInstance) startAudioStreamFromUrl(url string) {
 	// get the audio data from the given song url
 	resp, err := http.Get(url)
 	if err != nil || resp.StatusCode != 200 {
-		// TODO: could not stream audio skip to next song
+		// TODO: notify user could not stream audio skip to next song
 		return
 	}
 	defer resp.Body.Close()
@@ -274,15 +300,12 @@ func sendPCM(v *discordgo.VoiceConnection, pcm <-chan []int16) {
 		return
 	}
 
-	var err error
-
 	opusEncoder, err := gopus.NewEncoder(frameRate, audioChannels, gopus.Audio)
-	opusEncoder.SetBitrate(audioBitrate)
-
 	if err != nil {
 		fmt.Println("NewEncoder Error", err)
 		return
 	}
+	opusEncoder.SetBitrate(audioBitrate)
 
 	for {
 

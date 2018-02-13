@@ -41,7 +41,8 @@ func (p *Music) Action(command string, content string, msg *discordgo.Message, s
 		return
 	}
 
-	voiceInstance := voice.GetVoiceInstance(channel.GuildID, msg)
+	// get voice instance for the users guild
+	voiceInstance := voice.GetOrMakeVoiceInstance(channel.GuildID, msg)
 
 	switch command {
 	case "play":
@@ -49,7 +50,6 @@ func (p *Music) Action(command string, content string, msg *discordgo.Message, s
 		// if content length is nothing, assume they're playing from a pause
 		if len(content) == 0 {
 
-			// fmt.Println("continue current song")
 			voiceInstance.TogglePauseSong(false)
 
 		} else {
