@@ -1,9 +1,11 @@
 package plugins
 
 import (
+	"github.com/Snakeyesz/snek-bot/utils"
 	"github.com/bwmarrin/discordgo"
 )
 
+// plugin will simply respond to "ping" with "pong" and vica versa
 type Pong struct{}
 
 // will validate if the pass command is used for this plugin
@@ -19,17 +21,16 @@ func (p *Pong) ValidateCommand(command string) bool {
 	return false
 }
 
+// Main entry point for plugin
 func (p *Pong) Action(command string, content string, msg *discordgo.Message, session *discordgo.Session) {
-
-	session.ChannelTyping(msg.ChannelID)
 
 	// If the message is "ping" reply with "Pong!"
 	if command == "ping" {
-		session.ChannelMessageSend(msg.ChannelID, "Pong!")
+		utils.SendMessage(msg.ChannelID, "Pong!")
 	}
 
 	// If the message is "pong" reply with "Ping!"
 	if command == "pong" {
-		session.ChannelMessageSend(msg.ChannelID, "Ping!")
+		utils.SendMessage(msg.ChannelID, "Ping!")
 	}
 }
