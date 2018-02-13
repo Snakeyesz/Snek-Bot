@@ -35,7 +35,6 @@ var (
 		&plugins.Cat{},
 		&plugins.Pong{},
 		&plugins.Music{},
-		&plugins.Airhorn{},
 	}
 )
 
