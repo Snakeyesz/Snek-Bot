@@ -24,19 +24,18 @@ func (c *Cat) ValidateCommand(command string) bool {
 // Main Entry point for the plugin
 func (c *Cat) Action(command string, content string, msg *discordgo.Message, session *discordgo.Session) {
 
-	session.ChannelTyping(msg.ChannelID)
-
+	// attempt to get cat picture and display if response is valid
 	json, err := utils.GetJsonFromUrl("http://random.cat/meow")
 	if err != nil {
 
-		session.ChannelMessageSend(
+		utils.SendMessage(
 			msg.ChannelID,
 			"MEOW! :smiley_cat:\n"+json.Path("file").Data().(string),
 		)
 	} else {
-		session.ChannelMessageSend(
+		utils.SendMessage(
 			msg.ChannelID,
-			"): something went retrieving the cat pic. sorry :/",
+			"): something went retrieving the cat pic. sorry",
 		)
 	}
 }

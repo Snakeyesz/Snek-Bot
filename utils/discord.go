@@ -2,7 +2,6 @@ package utils
 
 import (
 	"errors"
-	"fmt"
 
 	"github.com/Snakeyesz/snek-bot/cache"
 	"github.com/bwmarrin/discordgo"
@@ -55,7 +54,7 @@ func JoinUserVoiceChat(msg *discordgo.Message) (*discordgo.VoiceConnection, erro
 func SendMessage(channelId string, message string) {
 	translations := cache.Geti18nTranslations()
 
-	fmt.Printf("Sending Message...: %s \n", message)
+	cache.GetDiscordSession().ChannelTyping(msg.ChannelID)
 
 	// check if the error code has a user translation
 	if translations.ExistsP(message) {
