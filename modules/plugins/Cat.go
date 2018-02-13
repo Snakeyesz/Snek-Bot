@@ -30,12 +30,13 @@ func (c *Cat) Action(command string, content string, msg *discordgo.Message, ses
 
 		utils.SendMessage(
 			msg.ChannelID,
-			"MEOW! :smiley_cat:\n"+json.Path("file").Data().(string),
+			"): something went retrieving the cat pic. sorry",
 		)
 	} else {
+
 		utils.SendMessage(
 			msg.ChannelID,
-			"): something went retrieving the cat pic. sorry",
+			"MEOW! :smiley_cat:\n"+json.Path("file").Data().(string),
 		)
 	}
 }
