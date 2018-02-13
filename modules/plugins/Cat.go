@@ -23,9 +23,6 @@ func (c *Cat) ValidateCommand(command string) bool {
 
 // Main Entry point for the plugin
 func (c *Cat) Action(command string, content string, msg *discordgo.Message, session *discordgo.Session) {
-	if c.ValidateCommand(command) == false {
-		return
-	}
 
 	session.ChannelTyping(msg.ChannelID)
 

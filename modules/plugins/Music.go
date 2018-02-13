@@ -34,9 +34,6 @@ func (p *Music) ValidateCommand(command string) bool {
 
 // Main Entry point for the plugin
 func (p *Music) Action(command string, content string, msg *discordgo.Message, session *discordgo.Session) {
-	if p.ValidateCommand(command) == false {
-		return
-	}
 
 	channel, err := session.State.Channel(msg.ChannelID)
 	if err != nil {

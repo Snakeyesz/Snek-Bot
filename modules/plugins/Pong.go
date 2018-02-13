@@ -20,9 +20,6 @@ func (p *Pong) ValidateCommand(command string) bool {
 }
 
 func (p *Pong) Action(command string, content string, msg *discordgo.Message, session *discordgo.Session) {
-	if p.ValidateCommand(command) == false {
-		return
-	}
 
 	session.ChannelTyping(msg.ChannelID)
 

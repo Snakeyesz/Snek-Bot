@@ -36,9 +36,6 @@ func (a *Airhorn) ValidateCommand(command string) bool {
 
 // Main Entry point for the plugin
 func (a *Airhorn) Action(command string, content string, msg *discordgo.Message, session *discordgo.Session) {
-	if a.ValidateCommand(command) == false {
-		return
-	}
 
 	// Find the channel that the message came from.
 	channel, err := session.State.Channel(msg.ChannelID)
