@@ -17,8 +17,8 @@ func main() {
 	// Initialize and loadcomponents
 	components.LoadAppConfig()
 	components.Loadi18nTranslations()
-	components.InitDiscordBot()
 	components.InitGoogleDrive()
+	components.InitDiscordBot() // always load last
 
 	// connect discord bot
 	discord := cache.GetDiscordSession()
