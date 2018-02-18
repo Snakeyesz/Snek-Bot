@@ -11,6 +11,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/nfnt/resize"
+
 	"google.golang.org/api/drive/v3"
 
 	"github.com/Snakeyesz/snek-bot/utils"
@@ -70,7 +72,10 @@ func (b *BiasGame) InitPlugin() {
 			if err != nil {
 				continue
 			}
-			versesImage = img
+
+			resizedImage := resize.Resize(0, 150, img, resize.Lanczos3)
+
+			versesImage = resizedImage
 
 		}
 	} else {
@@ -114,7 +119,9 @@ func (b *BiasGame) Action(command string, content string, msg *discordgo.Message
 	finalImage := combineTwoImage(images[0], images[1])
 
 	buf := new(bytes.Buffer)
-	png.Encode(buf, finalImage)
+	encoder := new(png.Encoder)
+	encoder.CompressionLevel = 2
+	encoder.Encode(buf, finalImage)
 
 	messageString := msg.Author.Mention() +
 		"\nRounds Remaining: 32\n" +
@@ -136,7 +143,7 @@ func (b *BiasGame) Action(command string, content string, msg *discordgo.Message
 // refreshes the list of bias choices
 func refreshBiasChoices() {
 	driveService := cache.GetGoogleDriveService()
-	results, err := driveService.Files.List().Q(fmt.Sprintf(DRIVE_SEARCH_TEXT, GIRLS_FOLDER_ID)).Fields("nextPageToken, files").Do()
+	results, err := driveService.Files.List().Q(fmt.Sprintf(DRIVE_SEARCH_TEXT, GIRLS_FOLDER_ID)).PageSize(10).Fields("nextPageToken, files").Do()
 	if err != nil {
 		fmt.Println(err)
 	}
@@ -162,6 +169,8 @@ func refreshBiasChoices() {
 				// decode image
 				img, _, _ := image.Decode(res.Body)
 
+				resizedImage := resize.Resize(0, 150, img, resize.Lanczos3)
+
 				// get bias name and group name from file name
 				groupBias := strings.Split(file.Name, ".")[0]
 
@@ -170,7 +179,7 @@ func refreshBiasChoices() {
 					driveId:        file.Id,
 					webViewLink:    file.WebViewLink,
 					webContentLink: file.WebContentLink,
-					biasImage:      img,
+					biasImage:      resizedImage,
 					groupName:      strings.Split(groupBias, "_")[0],
 					biasName:       strings.Split(groupBias, "_")[1],
 				}
