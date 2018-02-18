@@ -25,7 +25,8 @@ func InitDiscordBot() {
 	discord, err := discordgo.New("Bot " + appConfigs.Path("discord_bot.token").Data().(string))
 	utils.PanicCheck(err)
 
-	// Add all event handlers
+	// Init plugins and add all event handlers
+	modules.InitPlugins()
 	addEventHandlers(discord)
 
 	cache.SetDiscordSession(discord)

@@ -15,6 +15,9 @@ import (
 
 // Basic interface for plugins
 type Plugin interface {
+	// custom init for the plugins
+	//   golang init fires to soon in some cases
+	InitPlugin()
 
 	// Simple and efficient check if the passed command is valid
 	ValidateCommand(command string) bool
@@ -30,14 +33,20 @@ type Plugin interface {
 }
 
 // List of active plugins
-var (
+var pluginList []Plugin
+
+func InitPlugins() {
 	pluginList = []Plugin{
 		&plugins.Cat{},
 		&plugins.Pong{},
 		&plugins.Music{},
 		&plugins.BiasGame{},
 	}
-)
+
+	for _, plugin := range pluginList {
+		plugin.InitPlugin()
+	}
+}
 
 // command - The command that triggered this execution
 // content - The content without command

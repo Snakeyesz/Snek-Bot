@@ -11,6 +11,8 @@ import (
 // Plugin joins voice chat of the user that initiated it and plays music based on the passed link
 type Music struct{}
 
+func (p *Music) InitPlugin() {}
+
 // will validate if the pass command is used for this plugin
 func (p *Music) ValidateCommand(command string) bool {
 	validCommands := []string{

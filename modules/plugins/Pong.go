@@ -8,6 +8,8 @@ import (
 // plugin will simply respond to "ping" with "pong" and vica versa
 type Pong struct{}
 
+func (p *Pong) InitPlugin() {}
+
 // will validate if the pass command is used for this plugin
 func (p *Pong) ValidateCommand(command string) bool {
 	validCommands := []string{"ping", "pong"}

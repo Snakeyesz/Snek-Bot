@@ -8,6 +8,8 @@ import (
 // Plugin responds to command by displaying a image retrieved from http://random.cat/meow
 type Cat struct{}
 
+func (c *Cat) InitPlugin() {}
+
 // Will validate if the pass command entered is used for this plugin
 func (c *Cat) ValidateCommand(command string) bool {
 	validCommands := []string{"meow", "cat", "randomcat"}
