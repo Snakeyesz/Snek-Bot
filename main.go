@@ -18,6 +18,7 @@ func main() {
 	components.LoadAppConfig()
 	components.Loadi18nTranslations()
 	components.InitDiscordBot()
+	components.InitGoogleDrive()
 
 	// connect discord bot
 	discord := cache.GetDiscordSession()
