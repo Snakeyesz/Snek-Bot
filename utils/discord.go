@@ -2,6 +2,7 @@ package utils
 
 import (
 	"errors"
+	"io"
 
 	"github.com/Snakeyesz/snek-bot/cache"
 	"github.com/bwmarrin/discordgo"
@@ -50,7 +51,7 @@ func JoinUserVoiceChat(msg *discordgo.Message) (*discordgo.VoiceConnection, erro
 	return nil, errors.New("bot.voice.no-target-voice-channel")
 }
 
-// SendMessage alerts user of custom error if any exists
+// SendMessage sends a message to the given channel. will translate message if an i18n translation exists
 func SendMessage(channelID string, message string) {
 	translations := cache.Geti18nTranslations()
 
@@ -63,4 +64,17 @@ func SendMessage(channelID string, message string) {
 
 	// output translation to user
 	cache.GetDiscordSession().ChannelMessageSend(channelID, message)
+}
+
+// s alerts user of custom error if any exists
+func SendFile(channelID string, filename string, reader io.Reader, message string) (*discordgo.Message, error) {
+	cache.GetDiscordSession().ChannelTyping(channelID)
+
+	if message != "" {
+
+		return cache.GetDiscordSession().ChannelFileSendWithMessage(channelID, message, filename, reader)
+	} else {
+
+		return cache.GetDiscordSession().ChannelFileSend(channelID, filename, reader)
+	}
 }
