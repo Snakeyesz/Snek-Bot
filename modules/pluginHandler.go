@@ -30,6 +30,8 @@ type Plugin interface {
 		msg *discordgo.Message,
 		session *discordgo.Session,
 	)
+
+	ActionOnReactionAdd(reaction *discordgo.MessageReactionAdd)
 }
 
 // List of active plugins
@@ -61,5 +63,14 @@ func CallBotPlugin(command string, content string, msg *discordgo.Message) {
 		if plugin.ValidateCommand(command) {
 			plugin.Action(command, content, msg, cache.GetDiscordSession())
 		}
+	}
+}
+
+func CallBotPluginOnReactionAdd(reaction *discordgo.MessageReactionAdd) {
+
+	/// Run plugins for the given command
+	for _, plugin := range pluginList {
+
+		plugin.ActionOnReactionAdd(reaction)
 	}
 }

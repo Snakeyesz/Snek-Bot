@@ -37,6 +37,7 @@ func addEventHandlers(discord *discordgo.Session) {
 
 	// add handlers
 	discord.AddHandler(messageCreate)
+	discord.AddHandler(botOnReactionAdd)
 }
 
 /**********************************
@@ -67,4 +68,13 @@ func messageCreate(s *discordgo.Session, msg *discordgo.MessageCreate) {
 		// pass command to plugin handler
 		modules.CallBotPlugin(command, userText, msg.Message)
 	}
+}
+
+// Called everytime a reaction is added to any message
+func botOnReactionAdd(s *discordgo.Session, r *discordgo.MessageReactionAdd) {
+	if r.UserID == s.State.User.ID {
+		return
+	}
+
+	modules.CallBotPluginOnReactionAdd(r)
 }

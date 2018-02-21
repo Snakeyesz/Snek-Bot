@@ -71,3 +71,7 @@ func (p *Music) Action(command string, content string, msg *discordgo.Message, s
 
 	}
 }
+
+func (m *Music) ActionOnReactionAdd(reaction *discordgo.MessageReactionAdd) {
+
+}

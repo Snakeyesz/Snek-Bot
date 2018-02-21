@@ -42,3 +42,7 @@ func (c *Cat) Action(command string, content string, msg *discordgo.Message, ses
 		)
 	}
 }
+
+func (c *Cat) ActionOnReactionAdd(reaction *discordgo.MessageReactionAdd) {
+
+}

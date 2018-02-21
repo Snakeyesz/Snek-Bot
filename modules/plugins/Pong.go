@@ -36,3 +36,7 @@ func (p *Pong) Action(command string, content string, msg *discordgo.Message, se
 		utils.SendMessage(msg.ChannelID, "Ping!")
 	}
 }
+
+func (p *Pong) ActionOnReactionAdd(reaction *discordgo.MessageReactionAdd) {
+
+}
