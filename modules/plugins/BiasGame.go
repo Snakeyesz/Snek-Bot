@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/nfnt/resize"
 
@@ -42,7 +41,9 @@ type singleBiasGame struct {
 	user             *discordgo.User
 	channelID        string
 	roundLosers      []*biasChoice
-	unusedBiasCoices []*biasChoice
+	roundWinners     []*biasChoice
+	biasQueue        []*biasChoice
+	gameWinnerBias   *biasChoice
 	roundsRemaining  int
 	lastRoundMessage *discordgo.Message
 	readyForReaction bool // used to make sure multiple reactions aren't counted
@@ -118,29 +119,25 @@ func (b *BiasGame) Action(command string, content string, msg *discordgo.Message
 
 // Called whenever a reaction is added to any message
 func (b *BiasGame) ActionOnReactionAdd(reaction *discordgo.MessageReactionAdd) {
-	fmt.Println(currentBiasGames)
-	fmt.Println("user id", reaction.UserID)
 
 	// confirm the reaction was added to a message for one bias games
 	if game, ok := currentBiasGames[reaction.UserID]; ok == true {
-		fmt.Println("game found")
 
-		// used to make sure multple quick reactions to trigger unexpected behavior
-		if !game.readyForReaction {
-			fmt.Println("game not ready for reaction")
+		// check if reaction was added to the message of the game
+		if game.lastRoundMessage.ID != reaction.MessageID {
 			return
 		}
 
-		if game.lastRoundMessage.ID != reaction.MessageID {
-			fmt.Println("message ids don't match")
+		// used to make sure multple quick reactions to trigger unexpected behavior
+		if !game.readyForReaction {
 			return
 		}
 
 		winnerIndex := 0
 		loserIndex := 0
 		validReaction := false
-		// if the user reacts with an arrow,
-		//    record winners and losers remove the first 2 biases from unused
+
+		// check if the reaction added to the message was a left or right arrow
 		if LEFT_ARROW_EMOJI == reaction.Emoji.Name {
 			winnerIndex = 0
 			loserIndex = 1
@@ -153,54 +150,64 @@ func (b *BiasGame) ActionOnReactionAdd(reaction *discordgo.MessageReactionAdd) {
 
 		if validReaction == true {
 			game.readyForReaction = false
-			game.unusedBiasCoices = append(game.unusedBiasCoices, game.unusedBiasCoices[winnerIndex])
-			game.roundLosers = append(game.roundLosers, game.unusedBiasCoices[loserIndex])
-			game.unusedBiasCoices = game.unusedBiasCoices[2:]
-			cache.GetDiscordSession().ChannelMessageDelete(game.channelID, game.lastRoundMessage.ID)
 			game.roundsRemaining--
-			game.sendBiasRound()
+
+			// record winners and losers for stats
+			game.roundLosers = append(game.roundLosers, game.biasQueue[loserIndex])
+			game.roundWinners = append(game.roundWinners, game.biasQueue[winnerIndex])
+
+			// add winner to end of bias queue and remove first two
+			game.biasQueue = append(game.biasQueue, game.biasQueue[winnerIndex])
+			game.biasQueue = game.biasQueue[2:]
+
+			// remove the previous rounds message and send the next one
+			cache.GetDiscordSession().ChannelMessageDelete(game.channelID, game.lastRoundMessage.ID)
+
+			// if there is only one bias left, they are the winner
+			if len(game.biasQueue) == 1 {
+
+				game.gameWinnerBias = game.biasQueue[0]
+				game.sendWinnerMessage()
+
+				// TODO: record winner, all winners, and losers
+
+				// end the game. delete from current games
+				delete(currentBiasGames, game.user.ID)
+
+			} else {
+
+				game.sendBiasRound()
+			}
+
 		}
-		fmt.Println("emoji id", reaction.Emoji.ID)
-		fmt.Println("emoji name", reaction.Emoji.Name)
-		fmt.Println("emoji apiname", reaction.Emoji.APIName())
-	} else {
-		fmt.Println("no game found")
 	}
 }
 
 // sendBiasRound will send the message for the round
 func (g *singleBiasGame) sendBiasRound() {
 
-	start := time.Now()
 	// combine first bias image with the "vs" image, then combine that image with 2nd bias image
-	img1 := g.unusedBiasCoices[0].biasImage
-	img2 := g.unusedBiasCoices[1].biasImage
+	img1 := g.biasQueue[0].biasImage
+	img2 := g.biasQueue[1].biasImage
 	img1 = utils.CombineTwoImages(img1, versesImage)
 	finalImage := utils.CombineTwoImages(img1, img2)
 
-	fmt.Println("image concat execution time: ", time.Since(start).Nanoseconds())
-
-	start = time.Now()
 	// create round message
 	messageString := fmt.Sprintf("%s\nRounds Remaining: %d\n%s %s vs %s %s",
 		g.user.Mention(),
 		g.roundsRemaining,
-		g.unusedBiasCoices[0].groupName,
-		g.unusedBiasCoices[0].biasName,
-		g.unusedBiasCoices[1].groupName,
-		g.unusedBiasCoices[1].biasName)
-	fmt.Println("string execution time: ", time.Since(start).Nanoseconds())
+		g.biasQueue[0].groupName,
+		g.biasQueue[0].biasName,
+		g.biasQueue[1].groupName,
+		g.biasQueue[1].biasName)
 
-	start = time.Now()
 	// encode the combined image and compress it
 	buf := new(bytes.Buffer)
 	encoder := new(png.Encoder)
 	encoder.CompressionLevel = -2 // -2 compression is best speed, -3 is best compression but end result isn't worth the slower encoding
 	encoder.Encode(buf, finalImage)
 	myReader := bytes.NewReader(buf.Bytes())
-	fmt.Println("encoding execution time: ", time.Since(start).Nanoseconds())
 
-	start = time.Now()
 	// send round message
 	fileSendMsg, err := utils.SendFile(g.channelID, "combined_pic.png", myReader, messageString)
 	if err != nil {
@@ -214,8 +221,25 @@ func (g *singleBiasGame) sendBiasRound() {
 	// update game state
 	g.lastRoundMessage = fileSendMsg
 	g.readyForReaction = true
-	fmt.Println("send messages execution time: ", time.Since(start).Nanoseconds())
+}
 
+// sendWinnerMessage sends the winning message to the user
+func (g *singleBiasGame) sendWinnerMessage() {
+
+	// encode and compress image
+	buf := new(bytes.Buffer)
+	encoder := new(png.Encoder)
+	encoder.CompressionLevel = -2 // -2 compression is best speed, -3 is best compression but end result isn't worth the slower encoding
+	encoder.Encode(buf, g.gameWinnerBias.biasImage)
+	myReader := bytes.NewReader(buf.Bytes())
+
+	messageString := fmt.Sprintf("%s\nWinner: %s %s!",
+		g.user.Mention(),
+		g.gameWinnerBias.groupName,
+		g.gameWinnerBias.biasName)
+
+	// send message
+	utils.SendFile(g.channelID, "biasgame_winner.png", myReader, messageString)
 }
 
 // createSinglePlayerGame will setup a singleplayer game for the user
@@ -243,9 +267,9 @@ func createOrGetSinglePlayerGame(msg *discordgo.Message) *singleBiasGame {
 
 			if usedIndexs[randomIndex] == false {
 				usedIndexs[randomIndex] = true
-				singleGame.unusedBiasCoices = append(singleGame.unusedBiasCoices, allBiasChoices[randomIndex])
+				singleGame.biasQueue = append(singleGame.biasQueue, allBiasChoices[randomIndex])
 
-				if len(singleGame.unusedBiasCoices) == 32 {
+				if len(singleGame.biasQueue) == 32 {
 					break
 				}
 			}
