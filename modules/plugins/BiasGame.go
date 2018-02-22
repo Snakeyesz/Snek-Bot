@@ -9,6 +9,9 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
+
+	"google.golang.org/api/googleapi"
 
 	"github.com/nfnt/resize"
 
@@ -114,7 +117,7 @@ func (b *BiasGame) ValidateCommand(command string) bool {
 func (b *BiasGame) Action(command string, content string, msg *discordgo.Message, session *discordgo.Session) {
 
 	singleGame := createOrGetSinglePlayerGame(msg)
-	singleGame.sendBiasRound()
+	singleGame.sendBiasGameRound()
 }
 
 // Called whenever a reaction is added to any message
@@ -160,9 +163,6 @@ func (b *BiasGame) ActionOnReactionAdd(reaction *discordgo.MessageReactionAdd) {
 			game.biasQueue = append(game.biasQueue, game.biasQueue[winnerIndex])
 			game.biasQueue = game.biasQueue[2:]
 
-			// remove the previous rounds message and send the next one
-			cache.GetDiscordSession().ChannelMessageDelete(game.channelID, game.lastRoundMessage.ID)
-
 			// if there is only one bias left, they are the winner
 			if len(game.biasQueue) == 1 {
 
@@ -175,16 +175,26 @@ func (b *BiasGame) ActionOnReactionAdd(reaction *discordgo.MessageReactionAdd) {
 				delete(currentBiasGames, game.user.ID)
 
 			} else {
+				// Sleep for half a second to allow other users to see what was chosen.
+				// This creates conversation while the game is going and makes it a overall better experience
+				//
+				//   This will also allow me to call out and harshly judge players who don't choose nayoung.
+				time.Sleep(time.Second / 2)
 
-				game.sendBiasRound()
+				game.sendBiasGameRound()
 			}
 
 		}
 	}
 }
 
-// sendBiasRound will send the message for the round
-func (g *singleBiasGame) sendBiasRound() {
+// sendBiasGameRound will send the message for the round
+func (g *singleBiasGame) sendBiasGameRound() {
+
+	// if a round message has been sent, delete before sending the next one
+	if g.lastRoundMessage != nil {
+		g.deleteLastGameRoundMessage()
+	}
 
 	// combine first bias image with the "vs" image, then combine that image with 2nd bias image
 	img1 := g.biasQueue[0].biasImage
@@ -226,6 +236,11 @@ func (g *singleBiasGame) sendBiasRound() {
 // sendWinnerMessage sends the winning message to the user
 func (g *singleBiasGame) sendWinnerMessage() {
 
+	// if a round message has been sent, delete before sending the next one
+	if g.lastRoundMessage != nil {
+		g.deleteLastGameRoundMessage()
+	}
+
 	// encode and compress image
 	buf := new(bytes.Buffer)
 	encoder := new(png.Encoder)
@@ -242,6 +257,11 @@ func (g *singleBiasGame) sendWinnerMessage() {
 	utils.SendFile(g.channelID, "biasgame_winner.png", myReader, messageString)
 }
 
+// deleteLastGameRoundMessage
+func (g *singleBiasGame) deleteLastGameRoundMessage() {
+	cache.GetDiscordSession().ChannelMessageDelete(g.lastRoundMessage.ChannelID, g.lastRoundMessage.ID)
+}
+
 // createSinglePlayerGame will setup a singleplayer game for the user
 func createOrGetSinglePlayerGame(msg *discordgo.Message) *singleBiasGame {
 	var singleGame *singleBiasGame
@@ -250,13 +270,14 @@ func createOrGetSinglePlayerGame(msg *discordgo.Message) *singleBiasGame {
 	// if so update the channel id for the game incase the user tried starting the game from another server
 	if game, ok := currentBiasGames[msg.Author.ID]; ok {
 
+		game.channelID = msg.ChannelID
 		singleGame = game
 	} else {
 		// create new game
 		singleGame = &singleBiasGame{
 			user:             msg.Author,
 			channelID:        msg.ChannelID,
-			roundsRemaining:  32,
+			roundsRemaining:  31,
 			readyForReaction: false,
 		}
 
@@ -285,18 +306,31 @@ func createOrGetSinglePlayerGame(msg *discordgo.Message) *singleBiasGame {
 // refreshes the list of bias choices
 func refreshBiasChoices() {
 	driveService := cache.GetGoogleDriveService()
-	results, err := driveService.Files.List().Q(fmt.Sprintf(DRIVE_SEARCH_TEXT, GIRLS_FOLDER_ID)).PageSize(50).Fields("nextPageToken, files").Do()
+	results, err := driveService.Files.List().Q(fmt.Sprintf(DRIVE_SEARCH_TEXT, GIRLS_FOLDER_ID)).Fields(googleapi.Field("nextPageToken, files")).PageSize(500).Do()
 	if err != nil {
 		fmt.Println(err)
 	}
+	allFiles := results.Files
+	pageToken := results.NextPageToken
 
-	if len(results.Files) > 0 {
+	for pageToken != "" {
+		results, err = driveService.Files.List().Q(fmt.Sprintf(DRIVE_SEARCH_TEXT, GIRLS_FOLDER_ID)).Fields(googleapi.Field("nextPageToken, files")).PageSize(500).PageToken(pageToken).Do()
+		pageToken = results.NextPageToken
+		if len(results.Files) > 0 {
+			allFiles = append(allFiles, results.Files...)
+		} else {
+			break
+		}
+
+	}
+
+	if len(allFiles) > 0 {
 
 		var wg sync.WaitGroup
 		mux := new(sync.Mutex)
 
-		fmt.Println("Files:", len(results.Files))
-		for _, file := range results.Files {
+		fmt.Println("Files:", len(allFiles))
+		for _, file := range allFiles {
 			wg.Add(1)
 
 			go func(file *drive.File) {
