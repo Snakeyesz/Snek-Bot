@@ -78,3 +78,19 @@ func SendFile(channelID string, filename string, reader io.Reader, message strin
 		return cache.GetDiscordSession().ChannelFileSend(channelID, filename, reader)
 	}
 }
+
+// GetGuildFromMessage
+func GetGuildFromMessage(msg *discordgo.Message) (*discordgo.Guild, error) {
+
+	channel, err := cache.GetDiscordSession().State.Channel(msg.ChannelID)
+	if err != nil {
+		return nil, err
+	}
+
+	guild, err := cache.GetDiscordSession().State.Guild(channel.GuildID)
+	if err != nil {
+		return nil, err
+	}
+
+	return guild, nil
+}
