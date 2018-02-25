@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"fmt"
 	"image"
+	"image/draw"
 	"image/png"
+	"io/ioutil"
 	"math/rand"
 	"net/http"
 	"strings"
@@ -46,6 +48,7 @@ type singleBiasGame struct {
 	roundLosers      []*biasChoice
 	roundWinners     []*biasChoice
 	biasQueue        []*biasChoice
+	topEight         []*biasChoice
 	gameWinnerBias   *biasChoice
 	roundsRemaining  int
 	lastRoundMessage *discordgo.Message
@@ -63,8 +66,10 @@ const (
 )
 
 var versesImage image.Image
+var winnerBracket image.Image
 var allBiasChoices []*biasChoice
 var currentBiasGames map[string]*singleBiasGame
+var bracketHTML string
 
 func (b *BiasGame) InitPlugin() {
 
@@ -73,7 +78,7 @@ func (b *BiasGame) InitPlugin() {
 	// load all bias images and information
 	refreshBiasChoices()
 
-	// load the verses image
+	// load the verses and winnerBracket image
 	driveService := cache.GetGoogleDriveService()
 	results, err := driveService.Files.List().Q(fmt.Sprintf(DRIVE_SEARCH_TEXT, MISC_FOLDER_ID)).Fields("nextPageToken, files").Do()
 	if err != nil {
@@ -81,10 +86,6 @@ func (b *BiasGame) InitPlugin() {
 	}
 
 	for _, file := range results.Files {
-		if file.Name != "verses.png" {
-			continue
-		}
-
 		res, err := http.Get(file.WebContentLink)
 		if err != nil {
 			return
@@ -94,10 +95,29 @@ func (b *BiasGame) InitPlugin() {
 			continue
 		}
 
-		resizedImage := resize.Resize(0, IMAGE_RESIZE_HEIGHT, img, resize.Lanczos3)
-		versesImage = resizedImage
+		switch file.Name {
+		case "verses.png":
+			fmt.Println("loading verses image")
 
+			// resize verses image to match the bias image sizes
+			resizedImage := resize.Resize(0, IMAGE_RESIZE_HEIGHT, img, resize.Lanczos3)
+			versesImage = resizedImage
+
+		case "topEightBracket - Copy.png":
+
+			fmt.Println("loading verses top eight bracket image")
+			winnerBracket = img
+		}
 	}
+
+	// load bracket html
+	var temp []byte
+	assetsPath := cache.GetAppConfig().Path("assets_folder").Data().(string)
+	temp, err = ioutil.ReadFile(assetsPath + "/BiasGame/top-8.html")
+	if err != nil {
+		fmt.Println(err)
+	}
+	bracketHTML = string(temp)
 }
 
 // Will validate if the pass command entered is used for this plugin
@@ -118,6 +138,7 @@ func (b *BiasGame) Action(command string, content string, msg *discordgo.Message
 
 	singleGame := createOrGetSinglePlayerGame(msg)
 	singleGame.sendBiasGameRound()
+
 }
 
 // Called whenever a reaction is added to any message
@@ -175,11 +196,15 @@ func (b *BiasGame) ActionOnReactionAdd(reaction *discordgo.MessageReactionAdd) {
 				delete(currentBiasGames, game.user.ID)
 
 			} else {
-				// Sleep for half a second to allow other users to see what was chosen.
+
+				if len(game.biasQueue) == 8 {
+					game.topEight = game.biasQueue
+				}
+				// Sleep a time bit to allow other users to see what was chosen.
 				// This creates conversation while the game is going and makes it a overall better experience
 				//
 				//   This will also allow me to call out and harshly judge players who don't choose nayoung.
-				time.Sleep(time.Second / 2)
+				time.Sleep(time.Second / 3)
 
 				game.sendBiasGameRound()
 			}
@@ -233,7 +258,7 @@ func (g *singleBiasGame) sendBiasGameRound() {
 	g.readyForReaction = true
 }
 
-// sendWinnerMessage sends the winning message to the user
+// sendWinnerMessage creates the top eight brackent sends the winning message to the user
 func (g *singleBiasGame) sendWinnerMessage() {
 
 	// if a round message has been sent, delete before sending the next one
@@ -241,11 +266,59 @@ func (g *singleBiasGame) sendWinnerMessage() {
 		g.deleteLastGameRoundMessage()
 	}
 
-	// encode and compress image
+	// offsets of where bias images need to be placed on bracket image
+	bracketImageOffsets := map[int]image.Point{
+		14: image.Pt(182, 8),
+
+		13: image.Pt(81, 226),
+		12: image.Pt(358, 226),
+
+		11: image.Pt(29, 364),
+		10: image.Pt(167, 364),
+		9:  image.Pt(305, 364),
+		8:  image.Pt(443, 364),
+
+		7: image.Pt(5, 472),
+		6: image.Pt(64, 472),
+		5: image.Pt(143, 472),
+		4: image.Pt(202, 472),
+		3: image.Pt(281, 472),
+		2: image.Pt(340, 472),
+		1: image.Pt(419, 472),
+		0: image.Pt(478, 472),
+	}
+
+	// get last 7 from winners array and combine with topEight array
+	winners := g.roundWinners[len(g.roundWinners)-7 : len(g.roundWinners)]
+	bracketInfo := append(g.topEight, winners...)
+
+	// create final image with the bounds of the winner bracket
+	bracketImage := image.NewRGBA(winnerBracket.Bounds())
+	draw.Draw(bracketImage, winnerBracket.Bounds(), winnerBracket, image.Point{0, 0}, draw.Src)
+
+	// populate winner brackent image
+	for i, bias := range bracketInfo {
+		fmt.Println(i, bias.groupName, bias.biasName)
+
+		// adjust images sizing according to placement
+		resizeTo := uint(50)
+		if i == 14 {
+			resizeTo = 165
+		} else if i == 13 || i == 12 {
+			resizeTo = 90
+		} else if i == 11 || i == 10 || i == 9 || i == 8 {
+			resizeTo = 60
+		}
+		ri := resize.Resize(0, resizeTo, bias.biasImage, resize.Lanczos3)
+
+		draw.Draw(bracketImage, ri.Bounds().Add(bracketImageOffsets[i]), ri, image.ZP, draw.Over)
+	}
+
+	// compress bracket image
 	buf := new(bytes.Buffer)
 	encoder := new(png.Encoder)
 	encoder.CompressionLevel = -2 // -2 compression is best speed, -3 is best compression but end result isn't worth the slower encoding
-	encoder.Encode(buf, g.gameWinnerBias.biasImage)
+	encoder.Encode(buf, bracketImage)
 	myReader := bytes.NewReader(buf.Bytes())
 
 	messageString := fmt.Sprintf("%s\nWinner: %s %s!",
@@ -306,15 +379,18 @@ func createOrGetSinglePlayerGame(msg *discordgo.Message) *singleBiasGame {
 // refreshes the list of bias choices
 func refreshBiasChoices() {
 	driveService := cache.GetGoogleDriveService()
-	results, err := driveService.Files.List().Q(fmt.Sprintf(DRIVE_SEARCH_TEXT, GIRLS_FOLDER_ID)).Fields(googleapi.Field("nextPageToken, files")).PageSize(500).Do()
+
+	// get bias image from google drive
+	results, err := driveService.Files.List().Q(fmt.Sprintf(DRIVE_SEARCH_TEXT, GIRLS_FOLDER_ID)).Fields(googleapi.Field("nextPageToken, files(name, id, webViewLink, webContentLink)")).PageSize(1000).Do()
 	if err != nil {
 		fmt.Println(err)
 	}
 	allFiles := results.Files
-	pageToken := results.NextPageToken
 
+	// retry for more bias images if needed
+	pageToken := results.NextPageToken
 	for pageToken != "" {
-		results, err = driveService.Files.List().Q(fmt.Sprintf(DRIVE_SEARCH_TEXT, GIRLS_FOLDER_ID)).Fields(googleapi.Field("nextPageToken, files")).PageSize(500).PageToken(pageToken).Do()
+		results, err = driveService.Files.List().Q(fmt.Sprintf(DRIVE_SEARCH_TEXT, GIRLS_FOLDER_ID)).Fields(googleapi.Field("nextPageToken, files(name, id, webViewLink, webContentLink)")).PageSize(1000).PageToken(pageToken).Do()
 		pageToken = results.NextPageToken
 		if len(results.Files) > 0 {
 			allFiles = append(allFiles, results.Files...)
@@ -325,7 +401,6 @@ func refreshBiasChoices() {
 	}
 
 	if len(allFiles) > 0 {
-
 		var wg sync.WaitGroup
 		mux := new(sync.Mutex)
 
@@ -362,11 +437,6 @@ func refreshBiasChoices() {
 				allBiasChoices = append(allBiasChoices, biasChoice)
 				mux.Unlock()
 
-				// fmt.Println("File Information: ")
-				// fmt.Println("\t ", file.Name)
-				// fmt.Println("\t ", file.Id)
-				// fmt.Println("\t ", file.WebViewLink)
-				// fmt.Println("\t ", file.WebContentLink)
 			}(file)
 		}
 		wg.Wait()
