@@ -9,9 +9,15 @@ import (
 	"io/ioutil"
 	"math/rand"
 	"net/http"
+	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/globalsign/mgo/bson"
+
+	"github.com/Snakeyesz/snek-bot/models"
 
 	"google.golang.org/api/googleapi"
 
@@ -136,8 +142,19 @@ func (b *BiasGame) ValidateCommand(command string) bool {
 // Main Entry point for the plugin
 func (b *BiasGame) Action(command string, content string, msg *discordgo.Message, session *discordgo.Session) {
 
-	singleGame := createOrGetSinglePlayerGame(msg)
-	singleGame.sendBiasGameRound()
+	fmt.Println("content", content)
+
+	switch content {
+	case "stats round wins":
+		printUserRoundWins(msg)
+	case "stats round loses":
+		printUserRoundLoses(msg)
+	case "stats":
+		printUserGameWinners(msg)
+	case "":
+		singleGame := createOrGetSinglePlayerGame(msg)
+		singleGame.sendBiasGameRound()
+	}
 
 }
 
@@ -191,15 +208,18 @@ func (b *BiasGame) ActionOnReactionAdd(reaction *discordgo.MessageReactionAdd) {
 				game.sendWinnerMessage()
 
 				// TODO: record winner, all winners, and losers
+				go recordGameStats(game)
 
 				// end the game. delete from current games
 				delete(currentBiasGames, game.user.ID)
 
 			} else {
 
+				// save the last 8 for the chart
 				if len(game.biasQueue) == 8 {
 					game.topEight = game.biasQueue
 				}
+
 				// Sleep a time bit to allow other users to see what was chosen.
 				// This creates conversation while the game is going and makes it a overall better experience
 				//
@@ -388,23 +408,23 @@ func refreshBiasChoices() {
 	allFiles := results.Files
 
 	// retry for more bias images if needed
-	pageToken := results.NextPageToken
-	for pageToken != "" {
-		results, err = driveService.Files.List().Q(fmt.Sprintf(DRIVE_SEARCH_TEXT, GIRLS_FOLDER_ID)).Fields(googleapi.Field("nextPageToken, files(name, id, webViewLink, webContentLink)")).PageSize(1000).PageToken(pageToken).Do()
-		pageToken = results.NextPageToken
-		if len(results.Files) > 0 {
-			allFiles = append(allFiles, results.Files...)
-		} else {
-			break
-		}
+	// pageToken := results.NextPageToken
+	// for pageToken != "" {
+	// 	results, err = driveService.Files.List().Q(fmt.Sprintf(DRIVE_SEARCH_TEXT, GIRLS_FOLDER_ID)).Fields(googleapi.Field("nextPageToken, files(name, id, webViewLink, webContentLink)")).PageSize(1000).PageToken(pageToken).Do()
+	// 	pageToken = results.NextPageToken
+	// 	if len(results.Files) > 0 {
+	// 		allFiles = append(allFiles, results.Files...)
+	// 	} else {
+	// 		break
+	// 	}
 
-	}
+	// }
 
 	if len(allFiles) > 0 {
 		var wg sync.WaitGroup
 		mux := new(sync.Mutex)
 
-		fmt.Println("Files:", len(allFiles))
+		fmt.Println("Loading Files:", len(allFiles))
 		for _, file := range allFiles {
 			wg.Add(1)
 
@@ -417,12 +437,16 @@ func refreshBiasChoices() {
 				}
 
 				// decode image
-				img, _, _ := image.Decode(res.Body)
+				img, _, imgErr := image.Decode(res.Body)
+				if imgErr != nil {
+					fmt.Printf("error decoding image %s:\n %s", file.Name, imgErr)
+					return
+				}
 
 				resizedImage := resize.Resize(0, IMAGE_RESIZE_HEIGHT, img, resize.Lanczos3)
 
 				// get bias name and group name from file name
-				groupBias := strings.Split(file.Name, ".")[0]
+				groupBias := strings.TrimSuffix(file.Name, filepath.Ext(file.Name))
 
 				biasChoice := &biasChoice{
 					fileName:       file.Name,
@@ -443,4 +467,195 @@ func refreshBiasChoices() {
 	} else {
 		fmt.Println("No bias files found.")
 	}
+}
+
+// recordGameStats will record the winner, round winners/losers, and other misc stats of a game
+func recordGameStats(game *singleBiasGame) {
+
+	// get guildID from game channel
+	channel, _ := cache.GetDiscordSession().State.Channel(game.channelID)
+	guild, err := cache.GetDiscordSession().State.Guild(channel.GuildID)
+	if err != nil {
+		fmt.Println("Error getting guild when recording stats")
+		return
+	}
+
+	// create a bias game entry
+	biasGameEntry := &models.SingleBiasGameEntry{
+		ID:           "",
+		UserID:       game.user.ID,
+		GuildID:      guild.ID,
+		RoundWinners: compileGameWinnersLosers(game.roundWinners),
+		RoundLosers:  compileGameWinnersLosers(game.roundLosers),
+		GameWinner: models.BiasEntry{
+			Name:      game.gameWinnerBias.biasName,
+			GroupName: game.gameWinnerBias.groupName,
+		},
+	}
+
+	utils.MongoDBInsert(models.BiasGameTable, biasGameEntry)
+}
+
+// printUserWinners
+func printUserGameWinners(msg *discordgo.Message) {
+	results := utils.MongoDBSearch(models.BiasGameTable, bson.M{"userid": msg.Author.ID})
+	fmt.Println("Results", results)
+
+	// check if the user has stats and give a message if they do not
+	resultCount, err := results.Count()
+	if err != nil || resultCount == 0 {
+		utils.SendMessage(msg.ChannelID, "biasgame.stats.no-stats")
+		return
+	}
+
+	// loop through the results and compile a map of [biasgroup biasname]number of occurences
+	biasCounts := make(map[string]int)
+	game := models.SingleBiasGameEntry{}
+	items := results.Iter()
+	for items.Next(&game) {
+		groupAndName := game.GameWinner.GroupName + " " + game.GameWinner.Name
+
+		if _, ok := biasCounts[groupAndName]; ok {
+			biasCounts[groupAndName]++
+		} else {
+			biasCounts[groupAndName] = 1
+		}
+	}
+
+	// convert data to map[num of occurences]delimited biases
+	compiledData, uniqueCounts := complieGameStats(biasCounts)
+
+	message := fmt.Sprintf("\n`%s` Bias Game Winners (%d total games) \n\n", msg.Author.Username, resultCount)
+	for _, count := range uniqueCounts {
+		fmt.Println("count:", count)
+		message += fmt.Sprintf("`%d` wins: `%s`\n", count, compiledData[count])
+	}
+
+	utils.SendMessage(msg.ChannelID, message)
+}
+
+// printUserRoundWins
+func printUserRoundWins(msg *discordgo.Message) {
+	results := utils.MongoDBSearch(models.BiasGameTable, bson.M{"userid": msg.Author.ID})
+	fmt.Println("Results", results)
+
+	// check if the user has stats and give a message if they do not
+	resultCount, err := results.Count()
+	if err != nil || resultCount == 0 {
+		utils.SendMessage(msg.ChannelID, "biasgame.stats.no-stats")
+		return
+	}
+
+	fmt.Println("result count: ", resultCount)
+
+	// loop through the results and compile a map of [biasgroup biasname]number of occurences
+	biasCounts := make(map[string]int)
+	game := models.SingleBiasGameEntry{}
+	items := results.Iter()
+	for items.Next(&game) {
+		for _, rWinner := range game.RoundWinners {
+			groupAndName := rWinner.GroupName + " " + rWinner.Name
+			fmt.Println("group name: ", groupAndName)
+
+			if _, ok := biasCounts[groupAndName]; ok {
+				biasCounts[groupAndName]++
+			} else {
+				biasCounts[groupAndName] = 1
+			}
+		}
+	}
+
+	fmt.Println("biasCounts: ", biasCounts)
+
+	// convert data to map[num of occurences]delimited biases
+	compiledData, uniqueCounts := complieGameStats(biasCounts)
+
+	message := msg.Author.Mention() + "\nAmount of rounds an idol has won in the bias game: \n\n"
+	for _, count := range uniqueCounts {
+		fmt.Println("count:", count)
+		message += fmt.Sprintf("%d: %s\n", count, compiledData[count])
+	}
+
+	utils.SendMessage(msg.ChannelID, message)
+}
+
+// printUserRoundLoses
+func printUserRoundLoses(msg *discordgo.Message) {
+	results := utils.MongoDBSearch(models.BiasGameTable, bson.M{"userid": msg.Author.ID})
+	fmt.Println("Results", results)
+
+	// check if the user has stats and give a message if they do not
+	resultCount, err := results.Count()
+	if err != nil || resultCount == 0 {
+		utils.SendMessage(msg.ChannelID, "biasgame.stats.no-stats")
+		return
+	}
+
+	// loop through the results and compile a map of [biasgroup biasname]number of occurences
+	biasCounts := make(map[string]int)
+	game := models.SingleBiasGameEntry{}
+	items := results.Iter()
+	for items.Next(&game) {
+		for _, rLoser := range game.RoundLosers {
+			groupAndName := rLoser.GroupName + " " + rLoser.Name
+
+			if _, ok := biasCounts[groupAndName]; ok {
+				biasCounts[groupAndName]++
+			} else {
+				biasCounts[groupAndName] = 1
+			}
+		}
+	}
+
+	// convert data to map[num of occurences]delimited biases
+	compiledData, uniqueCounts := complieGameStats(biasCounts)
+
+	message := msg.Author.Mention() + "\nAmount of rounds an idol has lost in the bias game: \n\n"
+	for _, count := range uniqueCounts {
+		fmt.Println("count:", count)
+		message += fmt.Sprintf("%d: %s\n", count, compiledData[count])
+	}
+
+	utils.SendMessage(msg.ChannelID, message)
+}
+
+// complieGameStats will convert records from database into a:
+// 		map[int number of occurentces]string group or biasnames comma delimited
+// 		will also return []int of the sorted unique counts for reliable looping later
+func complieGameStats(records map[string]int) (map[int]string, []int) {
+
+	// use map of counts to compile a new map of [unique occurence amounts]biasnames
+	var uniqueCounts []int
+	compiledData := make(map[int]string)
+	for k, v := range records {
+
+		if _, ok := compiledData[v]; ok {
+			compiledData[v] += ", " + k
+		} else {
+			compiledData[v] = k
+
+			// store unique counts so the map can be "sorted"
+			uniqueCounts = append(uniqueCounts, v)
+		}
+	}
+
+	// sort biggest to smallest
+	sort.Sort(sort.Reverse(sort.IntSlice(uniqueCounts)))
+
+	fmt.Println("compiled data: ", compiledData)
+	return compiledData, uniqueCounts
+}
+
+// compileGameWinnersLosers will loop through the biases and convert them to []models.BiasEntry
+func compileGameWinnersLosers(biases []*biasChoice) []models.BiasEntry {
+
+	var biasEntries []models.BiasEntry
+	for _, bias := range biases {
+		biasEntries = append(biasEntries, models.BiasEntry{
+			Name:      bias.biasName,
+			GroupName: bias.groupName,
+		})
+	}
+
+	return biasEntries
 }
