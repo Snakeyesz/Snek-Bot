@@ -18,6 +18,7 @@ func main() {
 	components.LoadAppConfig()
 	components.Loadi18nTranslations()
 	components.InitGoogleDrive()
+	components.ConnectMongoDB()
 	components.InitDiscordBot() // always load last
 
 	// connect discord bot
