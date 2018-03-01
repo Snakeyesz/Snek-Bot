@@ -18,11 +18,8 @@ var (
 func InitDiscordBot() {
 	fmt.Println("Initializing discord bot...")
 
-	// Get app configs
-	appConfigs := cache.GetAppConfig()
-
 	// init discord
-	discord, err := discordgo.New("Bot " + appConfigs.Path("discord_bot.token").Data().(string))
+	discord, err := discordgo.New("Bot " + cache.GetAppConfig().Path("discord_bot.token").Data().(string))
 	utils.PanicCheck(err)
 
 	// Init plugins and add all event handlers
