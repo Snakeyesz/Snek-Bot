@@ -66,9 +66,17 @@ func SendMessage(channelID string, message string) {
 	cache.GetDiscordSession().ChannelMessageSend(channelID, message)
 }
 
+// SendEmbed sends a message to the given channel using an embeded form
+func SendEmbed(channelID string, embed *discordgo.MessageEmbed) {
+	cache.GetDiscordSession().ChannelTyping(channelID)
+
+	// output translation to user
+	cache.GetDiscordSession().ChannelMessageSendEmbed(channelID, TruncateEmbed(embed))
+}
+
 // s alerts user of custom error if any exists
 func SendFile(channelID string, filename string, reader io.Reader, message string) (*discordgo.Message, error) {
-	cache.GetDiscordSession().ChannelTyping(channelID)
+	// cache.GetDiscordSession().ChannelTyping(channelID)
 
 	if message != "" {
 
@@ -93,4 +101,75 @@ func GetGuildFromMessage(msg *discordgo.Message) (*discordgo.Guild, error) {
 	}
 
 	return guild, nil
+}
+
+// Applies Embed Limits to the given Embed
+// Source: https://discordapp.com/developers/docs/resources/channel#embed-limits
+func TruncateEmbed(embed *discordgo.MessageEmbed) (result *discordgo.MessageEmbed) {
+	if embed == nil || (&discordgo.MessageEmbed{}) == embed {
+		return nil
+	}
+	if embed.Title != "" && len(embed.Title) > 256 {
+		embed.Title = embed.Title[0:255] + "…"
+	}
+	if len(embed.Description) > 2048 {
+		embed.Description = embed.Description[0:2047] + "…"
+	}
+	if embed.Footer != nil && len(embed.Footer.Text) > 2048 {
+		embed.Footer.Text = embed.Footer.Text[0:2047] + "…"
+	}
+	if embed.Author != nil && len(embed.Author.Name) > 256 {
+		embed.Author.Name = embed.Author.Name[0:255] + "…"
+	}
+	newFields := make([]*discordgo.MessageEmbedField, 0)
+	for _, field := range embed.Fields {
+		if field.Value == "" {
+			continue
+		}
+		if len(field.Name) > 256 {
+			field.Name = field.Name[0:255] + "…"
+		}
+		// TODO: better cutoff (at commas and stuff)
+		if len(field.Value) > 1024 {
+			field.Value = field.Value[0:1023] + "…"
+		}
+		newFields = append(newFields, field)
+		if len(newFields) >= 25 {
+			break
+		}
+	}
+	embed.Fields = newFields
+
+	if CalculateFullEmbedLength(embed) > 6000 {
+		if embed.Footer != nil {
+			embed.Footer.Text = ""
+		}
+		if CalculateFullEmbedLength(embed) > 6000 {
+			if embed.Author != nil {
+				embed.Author.Name = ""
+			}
+			if CalculateFullEmbedLength(embed) > 6000 {
+				embed.Fields = []*discordgo.MessageEmbedField{{}}
+			}
+		}
+	}
+
+	result = embed
+	return result
+}
+
+func CalculateFullEmbedLength(embed *discordgo.MessageEmbed) (count int) {
+	count += len(embed.Title)
+	count += len(embed.Description)
+	if embed.Footer != nil {
+		count += len(embed.Footer.Text)
+	}
+	if embed.Author != nil {
+		count += len(embed.Author.Name)
+	}
+	for _, field := range embed.Fields {
+		count += len(field.Name)
+		count += len(field.Value)
+	}
+	return count
 }
