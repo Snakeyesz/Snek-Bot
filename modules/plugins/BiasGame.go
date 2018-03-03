@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -154,18 +155,33 @@ func (b *BiasGame) Action(command string, content string, msg *discordgo.Message
 
 	fmt.Println("content", content)
 
-	switch content {
-	// case "stats rounds won":
-	// 	printUserRoundWins(msg)
-	// case "stats rounds lost":
-	// 	printUserRoundLoses(msg)
-	// case "stats":
-	// 	printUserGameWinners(msg)
-	case "":
-		singleGame := createOrGetSinglePlayerGame(msg)
-		singleGame.sendBiasGameRound()
-	default:
+	// stats
+	if strings.Index(content, "stats") == 0 {
 		printUserStats(msg, content)
+
+	} else if content == "" {
+
+		singleGame := createOrGetSinglePlayerGame(msg, 32)
+		singleGame.sendBiasGameRound()
+	} else if gameSize, err := strconv.Atoi(content); err == nil {
+
+		allowedGameSizes := map[int]bool{
+			10:  true, // for dev only, remove when game is live
+			32:  true,
+			64:  true,
+			128: true,
+			256: true,
+		}
+
+		// check if the game size the user wants is valid
+		if allowedGameSizes[gameSize] {
+			singleGame := createOrGetSinglePlayerGame(msg, gameSize)
+			singleGame.sendBiasGameRound()
+		} else {
+			utils.SendMessage(msg.ChannelID, "biasgame.game.invalid-game-size")
+			return
+		}
+
 	}
 
 }
@@ -338,6 +354,8 @@ func (g *singleBiasGame) sendWinnerMessage() {
 
 		// adjust images sizing according to placement
 		resizeTo := uint(50)
+
+		// TODO: redo this with a map[int index]int size
 		if i == 14 {
 			resizeTo = 165
 		} else if i == 13 || i == 12 {
@@ -372,7 +390,7 @@ func (g *singleBiasGame) deleteLastGameRoundMessage() {
 }
 
 // createSinglePlayerGame will setup a singleplayer game for the user
-func createOrGetSinglePlayerGame(msg *discordgo.Message) *singleBiasGame {
+func createOrGetSinglePlayerGame(msg *discordgo.Message, gameSize int) *singleBiasGame {
 	var singleGame *singleBiasGame
 
 	// check if the user has a current game already going.
@@ -386,7 +404,7 @@ func createOrGetSinglePlayerGame(msg *discordgo.Message) *singleBiasGame {
 		singleGame = &singleBiasGame{
 			user:             msg.Author,
 			channelID:        msg.ChannelID,
-			idolsRemaining:   32,
+			idolsRemaining:   gameSize,
 			readyForReaction: false,
 		}
 
@@ -399,7 +417,7 @@ func createOrGetSinglePlayerGame(msg *discordgo.Message) *singleBiasGame {
 				usedIndexs[randomIndex] = true
 				singleGame.biasQueue = append(singleGame.biasQueue, allBiasChoices[randomIndex])
 
-				if len(singleGame.biasQueue) == 32 {
+				if len(singleGame.biasQueue) == gameSize {
 					break
 				}
 			}
@@ -417,7 +435,7 @@ func refreshBiasChoices() {
 	driveService := cache.GetGoogleDriveService()
 
 	// get bias image from google drive
-	results, err := driveService.Files.List().Q(fmt.Sprintf(DRIVE_SEARCH_TEXT, GIRLS_FOLDER_ID)).Fields(googleapi.Field("nextPageToken, files(name, id, webViewLink, webContentLink)")).PageSize(1000).Do()
+	results, err := driveService.Files.List().Q(fmt.Sprintf(DRIVE_SEARCH_TEXT, GIRLS_FOLDER_ID)).Fields(googleapi.Field("nextPageToken, files(name, id, webViewLink, webContentLink)")).PageSize(10).Do()
 	if err != nil {
 		fmt.Println(err)
 	}
