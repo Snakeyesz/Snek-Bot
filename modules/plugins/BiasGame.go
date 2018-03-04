@@ -435,7 +435,7 @@ func refreshBiasChoices() {
 	driveService := cache.GetGoogleDriveService()
 
 	// get bias image from google drive
-	results, err := driveService.Files.List().Q(fmt.Sprintf(DRIVE_SEARCH_TEXT, GIRLS_FOLDER_ID)).Fields(googleapi.Field("nextPageToken, files(name, id, webViewLink, webContentLink)")).PageSize(1000).Do()
+	results, err := driveService.Files.List().Q(fmt.Sprintf(DRIVE_SEARCH_TEXT, GIRLS_FOLDER_ID)).Fields(googleapi.Field("nextPageToken, files(name, id, webViewLink, webContentLink)")).PageSize(32).Do()
 	if err != nil {
 		fmt.Println(err)
 	}
@@ -532,7 +532,7 @@ func recordGameStats(game *singleBiasGame) {
 
 // printUserWinners
 func printUserStats(msg *discordgo.Message, statsMessage string) {
-	results := getStatsResults(msg, statsMessage)
+	results, iconURL, targetName := getStatsResults(msg, statsMessage)
 
 	// check if the user has stats and give a message if they do not
 	resultCount, err := results.Count()
@@ -602,28 +602,38 @@ func printUserStats(msg *discordgo.Message, statsMessage string) {
 		}
 	}
 
-	sendStatsMessage(msg, statsTitle, countsHeader, biasCounts)
+	sendStatsMessage(msg, statsTitle, countsHeader, biasCounts, iconURL, targetName)
 }
 
 // getStatsResults will get the stats results based on the stats message
-func getStatsResults(msg *discordgo.Message, statsMessage string) *mgo.Query {
-	queryParams := bson.M{}
+func getStatsResults(msg *discordgo.Message, statsMessage string) (*mgo.Query, string, string) {
+	iconURL := ""
+	targetName := ""
 
+	queryParams := bson.M{}
 	// user/server/global checks
 	if strings.Contains(statsMessage, "server") {
-		
+
 		guild, err := utils.GetGuildFromMessage(msg)
 		if err != nil {
 			// todo: a message here or something i guess?
 		}
 
+		iconURL = discordgo.EndpointGuildIcon(guild.ID, guild.Icon)
+		targetName = "Server"
 		queryParams["guildid"] = guild.ID
 	} else if strings.Contains(statsMessage, "global") {
+		iconURL = cache.GetDiscordSession().State.User.AvatarURL("64")
+		targetName = "Global"
 
 	} else if strings.Contains(statsMessage, "@") {
+		iconURL = msg.Mentions[0].AvatarURL("64")
+		targetName = msg.Mentions[0].Username
 
 		queryParams["userid"] = msg.Mentions[0].ID
 	} else {
+		iconURL = msg.Author.AvatarURL("64")
+		targetName = msg.Author.Username
 
 		queryParams["userid"] = msg.Author.ID
 	}
@@ -644,7 +654,7 @@ func getStatsResults(msg *discordgo.Message, statsMessage string) *mgo.Query {
 		queryParams["_id"] = bson.M{"$gte": fromId, "$lt": toId}
 	}
 
-	return utils.MongoDBSearch(models.BiasGameTable, queryParams)
+	return utils.MongoDBSearch(models.BiasGameTable, queryParams), iconURL, targetName
 }
 
 // complieGameStats will convert records from database into a:
@@ -671,13 +681,13 @@ func complieGameStats(records map[string]int) (map[int][]string, []int) {
 	return compiledData, uniqueCounts
 }
 
-func sendStatsMessage(msg *discordgo.Message, title string, countLabel string, data map[string]int) {
+func sendStatsMessage(msg *discordgo.Message, title string, countLabel string, data map[string]int, iconURL string, targetName string) {
 
 	embed := &discordgo.MessageEmbed{
 		Color: 0x0FADED, // blueish
 		Author: &discordgo.MessageEmbedAuthor{
-			Name:    fmt.Sprintf("%s - %s\n", msg.Author.Username, title),
-			IconURL: msg.Author.AvatarURL("64"),
+			Name:    fmt.Sprintf("%s - %s\n", targetName, title),
+			IconURL: iconURL,
 		},
 	}
 
@@ -715,8 +725,6 @@ func compileGameWinnersLosers(biases []*biasChoice) []models.BiasEntry {
 }
 
 func giveImageShadowBorder(img image.Image, offsetX int, offsetY int) image.Image {
-
-	// fuckign threading issues!!!!!!!!
 
 	rgba := image.NewRGBA(shadowBorder.Bounds())
 	draw.Draw(rgba, shadowBorder.Bounds(), shadowBorder, image.Point{0, 0}, draw.Src)
