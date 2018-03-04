@@ -435,7 +435,7 @@ func refreshBiasChoices() {
 	driveService := cache.GetGoogleDriveService()
 
 	// get bias image from google drive
-	results, err := driveService.Files.List().Q(fmt.Sprintf(DRIVE_SEARCH_TEXT, GIRLS_FOLDER_ID)).Fields(googleapi.Field("nextPageToken, files(name, id, webViewLink, webContentLink)")).PageSize(10).Do()
+	results, err := driveService.Files.List().Q(fmt.Sprintf(DRIVE_SEARCH_TEXT, GIRLS_FOLDER_ID)).Fields(googleapi.Field("nextPageToken, files(name, id, webViewLink, webContentLink)")).PageSize(1000).Do()
 	if err != nil {
 		fmt.Println(err)
 	}
@@ -532,27 +532,7 @@ func recordGameStats(game *singleBiasGame) {
 
 // printUserWinners
 func printUserStats(msg *discordgo.Message, statsMessage string) {
-	var results *mgo.Query
-
-	if strings.Contains(statsMessage, "server") {
-		guild, err := utils.GetGuildFromMessage(msg)
-		if err != nil {
-			// todo: a message here or something i guess?
-			return
-		}
-
-		results = utils.MongoDBSearch(models.BiasGameTable, bson.M{"guildid": guild.ID})
-	} else if strings.Contains(statsMessage, "global") {
-
-		results = utils.MongoDBSearch(models.BiasGameTable, bson.M{})
-
-	} else if strings.Contains(statsMessage, "@") {
-
-		results = utils.MongoDBSearch(models.BiasGameTable, bson.M{"userid": msg.Mentions[0].ID})
-	} else {
-
-		results = utils.MongoDBSearch(models.BiasGameTable, bson.M{"userid": msg.Author.ID})
-	}
+	results := getStatsResults(msg, statsMessage)
 
 	// check if the user has stats and give a message if they do not
 	resultCount, err := results.Count()
@@ -623,6 +603,48 @@ func printUserStats(msg *discordgo.Message, statsMessage string) {
 	}
 
 	sendStatsMessage(msg, statsTitle, countsHeader, biasCounts)
+}
+
+// getStatsResults will get the stats results based on the stats message
+func getStatsResults(msg *discordgo.Message, statsMessage string) *mgo.Query {
+	queryParams := bson.M{}
+
+	// user/server/global checks
+	if strings.Contains(statsMessage, "server") {
+		
+		guild, err := utils.GetGuildFromMessage(msg)
+		if err != nil {
+			// todo: a message here or something i guess?
+		}
+
+		queryParams["guildid"] = guild.ID
+	} else if strings.Contains(statsMessage, "global") {
+
+	} else if strings.Contains(statsMessage, "@") {
+
+		queryParams["userid"] = msg.Mentions[0].ID
+	} else {
+
+		queryParams["userid"] = msg.Author.ID
+	}
+
+	// date checks
+	if strings.Contains(statsMessage, "today") {
+		// dateCheck := bson.NewObjectIdWithTime()
+		messageTime, _ := msg.Timestamp.Parse()
+
+		from := time.Date(time.Now().Year(), time.Now().Month(), time.Now().Day(), 0, 0, 0, 0, messageTime.Location())
+		to := time.Date(time.Now().Year(), time.Now().Month(), time.Now().Day(), 23, 59, 59, 0, messageTime.Location())
+		fmt.Println("from ", from, " to ", to)
+
+		fromId := bson.NewObjectIdWithTime(from)
+		toId := bson.NewObjectIdWithTime(to)
+		fmt.Println("fromId ", fromId, " toId ", toId)
+
+		queryParams["_id"] = bson.M{"$gte": fromId, "$lt": toId}
+	}
+
+	return utils.MongoDBSearch(models.BiasGameTable, queryParams)
 }
 
 // complieGameStats will convert records from database into a:
