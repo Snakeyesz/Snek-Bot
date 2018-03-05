@@ -353,18 +353,19 @@ func (g *singleBiasGame) sendWinnerMessage() {
 
 	// populate winner brackent image
 	for i, bias := range bracketInfo {
+		resizeMap := map[int]uint{
+			14: 165,
+			13: 90, 12: 90,
+			11: 60, 10: 60, 9: 60, 8: 60,
+		}
 
 		// adjust images sizing according to placement
 		resizeTo := uint(50)
 
-		// TODO: redo this with a map[int index]int size
-		if i == 14 {
-			resizeTo = 165
-		} else if i == 13 || i == 12 {
-			resizeTo = 90
-		} else if i == 11 || i == 10 || i == 9 || i == 8 {
-			resizeTo = 60
+		if newResizeVal, ok := resizeMap[i]; ok {
+			resizeTo = newResizeVal
 		}
+
 		ri := resize.Resize(0, resizeTo, bias.biasImage, resize.Lanczos3)
 
 		draw.Draw(bracketImage, ri.Bounds().Add(bracketImageOffsets[i]), ri, image.ZP, draw.Over)
