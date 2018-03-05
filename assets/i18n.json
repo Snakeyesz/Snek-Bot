@@ -22,6 +22,11 @@
 		},
 		"game": {
 			"invalid-game-size": "Sorry, that game size is not valid. Valid sizes are: 32, 64, 128, or 256"
+		},
+		"suggestion": {
+			"image-not-square": "The suggested image must be a perfect square. Please crop the image and try again.",
+			"invalid-url": "Could not retrieve image from the given url.",
+			"thanks-for-suggestion": "Thank you for your suggestion! It has been recorded and will be reviewed. If your permission allow, you will be notified when your suggestion is reviewed."
 		}
 	}
 }

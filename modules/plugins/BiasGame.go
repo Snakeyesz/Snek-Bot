@@ -31,6 +31,7 @@ import (
 	"github.com/Snakeyesz/snek-bot/utils"
 
 	"github.com/Snakeyesz/snek-bot/cache"
+	"github.com/Snakeyesz/snek-bot/modules/plugins/biasgame"
 	"github.com/bwmarrin/discordgo"
 )
 
@@ -157,6 +158,9 @@ func (b *BiasGame) Action(command string, content string, msg *discordgo.Message
 	if strings.Index(content, "stats") == 0 {
 		printUserStats(msg, content)
 
+	} else if strings.Index(content, "suggest") == 0 {
+
+		biasgame.ProcessImageSuggestion(msg, content)
 	} else if content == "" {
 
 		singleGame := createOrGetSinglePlayerGame(msg, 32)
@@ -262,6 +266,9 @@ func (b *BiasGame) ActionOnReactionAdd(reaction *discordgo.MessageReactionAdd) {
 	if pagedMessage := utils.GetPagedMessage(reaction.MessageID); pagedMessage != nil {
 		pagedMessage.UpdateMessagePage(reaction)
 	}
+
+	// check if this was a reaction to a idol suggestion
+	biasgame.CheckSuggestionReaction(reaction)
 }
 
 // sendBiasGameRound will send the message for the round
@@ -438,7 +445,7 @@ func refreshBiasChoices() {
 	driveService := cache.GetGoogleDriveService()
 
 	// get bias image from google drive
-	results, err := driveService.Files.List().Q(fmt.Sprintf(DRIVE_SEARCH_TEXT, GIRLS_FOLDER_ID)).Fields(googleapi.Field("nextPageToken, files(name, id, webViewLink, webContentLink)")).PageSize(32).Do()
+	results, err := driveService.Files.List().Q(fmt.Sprintf(DRIVE_SEARCH_TEXT, GIRLS_FOLDER_ID)).Fields(googleapi.Field("nextPageToken, files(name, id, webViewLink, webContentLink)")).PageSize(10).Do()
 	if err != nil {
 		fmt.Println(err)
 	}
