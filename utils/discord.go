@@ -52,7 +52,7 @@ func JoinUserVoiceChat(msg *discordgo.Message) (*discordgo.VoiceConnection, erro
 }
 
 // SendMessage sends a message to the given channel. will translate message if an i18n translation exists
-func SendMessage(channelID string, message string) {
+func SendMessage(channelID string, message string) (*discordgo.Message, error) {
 	translations := cache.Geti18nTranslations()
 
 	cache.GetDiscordSession().ChannelTyping(channelID)
@@ -63,7 +63,8 @@ func SendMessage(channelID string, message string) {
 	}
 
 	// output translation to user
-	cache.GetDiscordSession().ChannelMessageSend(channelID, message)
+	sentMsg, err := cache.GetDiscordSession().ChannelMessageSend(channelID, message)
+	return sentMsg, err
 }
 
 // SendEmbed sends a message to the given channel using an embeded form
