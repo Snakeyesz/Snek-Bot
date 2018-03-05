@@ -67,11 +67,22 @@ func SendMessage(channelID string, message string) {
 }
 
 // SendEmbed sends a message to the given channel using an embeded form
-func SendEmbed(channelID string, embed *discordgo.MessageEmbed) {
+func SendEmbed(channelID string, embed *discordgo.MessageEmbed) (*discordgo.Message, error) {
 	cache.GetDiscordSession().ChannelTyping(channelID)
 
 	// output translation to user
-	cache.GetDiscordSession().ChannelMessageSendEmbed(channelID, TruncateEmbed(embed))
+	embededMessage, err := cache.GetDiscordSession().ChannelMessageSendEmbed(channelID, TruncateEmbed(embed))
+	return embededMessage, err
+}
+
+// EditEmbed edits the embed message with the new embed
+func EditEmbed(channelID string, messageID string, embed *discordgo.MessageEmbed) (message *discordgo.Message, err error) {
+	message, err = cache.GetDiscordSession().ChannelMessageEditEmbed(channelID, messageID, TruncateEmbed(embed))
+	if err != nil {
+		return nil, err
+	} else {
+		return message, err
+	}
 }
 
 // s alerts user of custom error if any exists
