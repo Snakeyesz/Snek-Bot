@@ -153,8 +153,6 @@ func (b *BiasGame) ValidateCommand(command string) bool {
 // Main Entry point for the plugin
 func (b *BiasGame) Action(command string, content string, msg *discordgo.Message, session *discordgo.Session) {
 
-	fmt.Println("content", content)
-
 	// stats
 	if strings.Index(content, "stats") == 0 {
 		printUserStats(msg, content)
@@ -259,6 +257,11 @@ func (b *BiasGame) ActionOnReactionAdd(reaction *discordgo.MessageReactionAdd) {
 
 		}
 	}
+
+	// check if the reaction was added to a paged message
+	if pagedMessage := utils.GetPagedMessage(reaction.MessageID); pagedMessage != nil {
+		pagedMessage.UpdateMessagePage(reaction)
+	}
 }
 
 // sendBiasGameRound will send the message for the round
@@ -350,7 +353,6 @@ func (g *singleBiasGame) sendWinnerMessage() {
 
 	// populate winner brackent image
 	for i, bias := range bracketInfo {
-		fmt.Println(i, bias.groupName, bias.biasName)
 
 		// adjust images sizing according to placement
 		resizeTo := uint(50)
@@ -645,11 +647,9 @@ func getStatsResults(msg *discordgo.Message, statsMessage string) (*mgo.Query, s
 
 		from := time.Date(time.Now().Year(), time.Now().Month(), time.Now().Day(), 0, 0, 0, 0, messageTime.Location())
 		to := time.Date(time.Now().Year(), time.Now().Month(), time.Now().Day(), 23, 59, 59, 0, messageTime.Location())
-		fmt.Println("from ", from, " to ", to)
 
 		fromId := bson.NewObjectIdWithTime(from)
 		toId := bson.NewObjectIdWithTime(to)
-		fmt.Println("fromId ", fromId, " toId ", toId)
 
 		queryParams["_id"] = bson.M{"$gte": fromId, "$lt": toId}
 	}
@@ -677,7 +677,6 @@ func complieGameStats(records map[string]int) (map[int][]string, []int) {
 	// sort biggest to smallest
 	sort.Sort(sort.Reverse(sort.IntSlice(uniqueCounts)))
 
-	fmt.Println("compiled data: ", compiledData)
 	return compiledData, uniqueCounts
 }
 
@@ -700,14 +699,35 @@ func sendStatsMessage(msg *discordgo.Message, title string, countLabel string, d
 			return compiledData[count][i] < compiledData[count][j]
 		})
 
-		embed.Fields = append(embed.Fields, &discordgo.MessageEmbedField{
-			Name:   fmt.Sprintf("%s - %d", countLabel, count),
-			Value:  strings.Join(compiledData[count], ", "),
-			Inline: false,
-		})
+		joinedNames := strings.Join(compiledData[count], ", ")
+
+		if len(joinedNames) < 1024 {
+			embed.Fields = append(embed.Fields, &discordgo.MessageEmbedField{
+				Name:   fmt.Sprintf("%s - %d", countLabel, count),
+				Value:  joinedNames,
+				Inline: false,
+			})
+		} else {
+
+			fmt.Println("before: ", strings.Join(compiledData[count][:40], ", "))
+			embed.Fields = append(embed.Fields, &discordgo.MessageEmbedField{
+				Name:   fmt.Sprintf("%s - %d", countLabel, count),
+				Value:  strings.Join(compiledData[count][:40], ", "),
+				Inline: false,
+			})
+
+			fmt.Println("after: ", strings.Join(compiledData[count][40:], ", "))
+			embed.Fields = append(embed.Fields, &discordgo.MessageEmbedField{
+				Name:   fmt.Sprintf("%s - %d", countLabel, count),
+				Value:  strings.Join(compiledData[count][40:], ", "),
+				Inline: false,
+			})
+		}
+
 	}
 
-	utils.SendEmbed(msg.ChannelID, embed)
+	// send paged message with 5 fields per page
+	utils.SendPagedMessage(msg, embed, 5)
 }
 
 // compileGameWinnersLosers will loop through the biases and convert them to []models.BiasEntry
