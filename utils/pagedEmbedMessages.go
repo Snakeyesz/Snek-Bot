@@ -42,7 +42,7 @@ func SendPagedMessage(msg *discordgo.Message, embed *discordgo.MessageEmbed, fie
 
 	// if there aren't multiple fields to be paged through, or if the amount of fields is less than the requested fields per page
 	//  just send a normal embed
-	if len(embed.Fields) < 2 || len(embed.Fields) < fieldsPerPage {
+	if len(embed.Fields) < 2 || len(embed.Fields) <= fieldsPerPage {
 		SendEmbed(msg.ChannelID, embed)
 		return nil
 	}
