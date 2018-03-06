@@ -254,7 +254,7 @@ func (b *BiasGame) ActionOnReactionAdd(reaction *discordgo.MessageReactionAdd) {
 				// This creates conversation while the game is going and makes it a overall better experience
 				//
 				//   This will also allow me to call out and harshly judge players who don't choose nayoung.
-				time.Sleep(time.Second / 3)
+				time.Sleep(time.Second / 5)
 
 				game.sendBiasGameRound()
 			}
