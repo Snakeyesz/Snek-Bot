@@ -633,16 +633,16 @@ func getStatsResults(msg *discordgo.Message, statsMessage string) (*mgo.Query, s
 		targetName = "Server"
 		queryParams["guildid"] = guild.ID
 	} else if strings.Contains(statsMessage, "global") {
-		iconURL = cache.GetDiscordSession().State.User.AvatarURL("64")
+		iconURL = cache.GetDiscordSession().State.User.AvatarURL("512")
 		targetName = "Global"
 
 	} else if strings.Contains(statsMessage, "@") {
-		iconURL = msg.Mentions[0].AvatarURL("64")
+		iconURL = msg.Mentions[0].AvatarURL("512")
 		targetName = msg.Mentions[0].Username
 
 		queryParams["userid"] = msg.Mentions[0].ID
 	} else {
-		iconURL = msg.Author.AvatarURL("64")
+		iconURL = msg.Author.AvatarURL("512")
 		targetName = msg.Author.Username
 
 		queryParams["userid"] = msg.Author.ID
