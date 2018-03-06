@@ -276,7 +276,7 @@ func (g *singleBiasGame) sendBiasGameRound() {
 
 	// if a round message has been sent, delete before sending the next one
 	if g.lastRoundMessage != nil {
-		g.deleteLastGameRoundMessage()
+		go g.deleteLastGameRoundMessage()
 	}
 
 	// combine first bias image with the "vs" image, then combine that image with 2nd bias image
@@ -312,8 +312,8 @@ func (g *singleBiasGame) sendBiasGameRound() {
 	}
 
 	// add reactions
-	cache.GetDiscordSession().MessageReactionAdd(g.channelID, fileSendMsg.ID, LEFT_ARROW_EMOJI)
-	cache.GetDiscordSession().MessageReactionAdd(g.channelID, fileSendMsg.ID, RIGHT_ARROW_EMOJI)
+	go cache.GetDiscordSession().MessageReactionAdd(g.channelID, fileSendMsg.ID, LEFT_ARROW_EMOJI)
+	go cache.GetDiscordSession().MessageReactionAdd(g.channelID, fileSendMsg.ID, RIGHT_ARROW_EMOJI)
 
 	// update game state
 	g.lastRoundMessage = fileSendMsg
