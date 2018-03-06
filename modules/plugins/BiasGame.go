@@ -715,21 +715,31 @@ func sendStatsMessage(msg *discordgo.Message, title string, countLabel string, d
 				Value:  joinedNames,
 				Inline: false,
 			})
+
 		} else {
 
-			fmt.Println("before: ", strings.Join(compiledData[count][:40], ", "))
-			embed.Fields = append(embed.Fields, &discordgo.MessageEmbedField{
-				Name:   fmt.Sprintf("%s - %d", countLabel, count),
-				Value:  strings.Join(compiledData[count][:40], ", "),
-				Inline: false,
-			})
+			// for a specific count, split into multiple fields of at max 40 names
+			dataForCount := compiledData[count]
+			namesPerField := 40
+			breaker := true
+			for breaker {
 
-			fmt.Println("after: ", strings.Join(compiledData[count][40:], ", "))
-			embed.Fields = append(embed.Fields, &discordgo.MessageEmbedField{
-				Name:   fmt.Sprintf("%s - %d", countLabel, count),
-				Value:  strings.Join(compiledData[count][40:], ", "),
-				Inline: false,
-			})
+				var namesForField string
+				if len(dataForCount) >= namesPerField {
+					namesForField = strings.Join(dataForCount[:namesPerField], ", ")
+					dataForCount = dataForCount[namesPerField:]
+				} else {
+					namesForField = strings.Join(dataForCount, ", ")
+					breaker = false
+				}
+
+				embed.Fields = append(embed.Fields, &discordgo.MessageEmbedField{
+					Name:   fmt.Sprintf("%s - %d", countLabel, count),
+					Value:  namesForField,
+					Inline: false,
+				})
+
+			}
 		}
 
 	}
