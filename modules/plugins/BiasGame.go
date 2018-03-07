@@ -219,14 +219,7 @@ func (b *BiasGame) ActionOnReactionAdd(reaction *discordgo.MessageReactionAdd) {
 	if game, ok := currentBiasGames[reaction.UserID]; ok == true {
 
 		// check if reaction was added to the message of the game
-		if game.lastRoundMessage.ID != reaction.MessageID {
-			return
-		}
-
-		// used to make sure multple quick reactions to trigger unexpected behavior
-		if !game.readyForReaction {
-			return
-		}
+		if game.lastRoundMessage.ID == reaction.MessageID && game.readyForReaction == true {
 
 		winnerIndex := 0
 		loserIndex := 0
@@ -284,6 +277,7 @@ func (b *BiasGame) ActionOnReactionAdd(reaction *discordgo.MessageReactionAdd) {
 			}
 
 		}
+	}
 	}
 
 	// check if the reaction was added to a paged message
