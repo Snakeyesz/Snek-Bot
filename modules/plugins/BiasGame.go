@@ -125,8 +125,19 @@ func (b *BiasGame) InitPlugin() {
 			fmt.Println("loading shadow border image")
 			resizedImage := resize.Resize(0, IMAGE_RESIZE_HEIGHT+30, img, resize.Lanczos3)
 			shadowBorder = resizedImage
+		case "crown.png":
+
+			fmt.Println("loading crown image")
+			resizedImage := resize.Resize(IMAGE_RESIZE_HEIGHT/2, 0, img, resize.Lanczos3)
+			crown = resizedImage
 		}
 	}
+
+	// append crown to top eight
+	bracketImage := image.NewRGBA(winnerBracket.Bounds())
+	draw.Draw(bracketImage, winnerBracket.Bounds(), winnerBracket, image.Point{0, 0}, draw.Src)
+	draw.Draw(bracketImage, crown.Bounds().Add(image.Pt(230, 5)), crown, image.ZP, draw.Over)
+	winnerBracket = bracketImage.SubImage(bracketImage.Rect)
 
 	// load bracket html
 	var temp []byte
