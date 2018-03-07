@@ -79,6 +79,7 @@ const (
 var versesImage image.Image
 var winnerBracket image.Image
 var shadowBorder image.Image
+var crown image.Image
 
 var allBiasChoices []*biasChoice
 var currentBiasGames map[string]*singleBiasGame
@@ -353,24 +354,24 @@ func (g *singleBiasGame) sendWinnerMessage() {
 
 	// offsets of where bias images need to be placed on bracket image
 	bracketImageOffsets := map[int]image.Point{
-		14: image.Pt(182, 8),
+		14: image.Pt(182, 53),
 
-		13: image.Pt(81, 226),
-		12: image.Pt(358, 226),
+		13: image.Pt(81, 271),
+		12: image.Pt(358, 271),
 
-		11: image.Pt(29, 364),
-		10: image.Pt(167, 364),
-		9:  image.Pt(305, 364),
-		8:  image.Pt(443, 364),
+		11: image.Pt(29, 409),
+		10: image.Pt(167, 409),
+		9:  image.Pt(305, 409),
+		8:  image.Pt(443, 409),
 
-		7: image.Pt(5, 472),
-		6: image.Pt(64, 472),
-		5: image.Pt(143, 472),
-		4: image.Pt(202, 472),
-		3: image.Pt(281, 472),
-		2: image.Pt(340, 472),
-		1: image.Pt(419, 472),
-		0: image.Pt(478, 472),
+		7: image.Pt(5, 517),
+		6: image.Pt(64, 517),
+		5: image.Pt(143, 517),
+		4: image.Pt(202, 517),
+		3: image.Pt(281, 517),
+		2: image.Pt(340, 517),
+		1: image.Pt(419, 517),
+		0: image.Pt(478, 517),
 	}
 
 	// get last 7 from winners array and combine with topEight array
