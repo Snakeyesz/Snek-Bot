@@ -172,6 +172,11 @@ func (b *BiasGame) Action(command string, content string, msg *discordgo.Message
 	} else if strings.Index(content, "suggest") == 0 {
 
 		biasgame.ProcessImageSuggestion(msg, content)
+
+	} else if strings.Index(content, "current") == 0 {
+
+		displayCurrentGameStats(msg)
+
 	} else if strings.Index(content, "refresh-images") == 0 {
 
 		// check if the user is the bot owner
@@ -529,6 +534,75 @@ func refreshBiasChoices() {
 	} else {
 		fmt.Println("No bias files found.")
 	}
+}
+
+// displayCurrentGameStats will list the rounds and round winners of a currently running game
+func displayCurrentGameStats(msg *discordgo.Message) {
+
+	blankField := &discordgo.MessageEmbedField{
+		Name:   ZERO_WIDTH_SPACE,
+		Value:  ZERO_WIDTH_SPACE,
+		Inline: true,
+	}
+
+	// find currently running game for the user or a mention if one exists
+	userPlayingGame := msg.Author
+	if len(msg.Mentions) > 0 {
+		userPlayingGame = msg.Mentions[0]
+	}
+
+	if game, ok := currentBiasGames[userPlayingGame.ID]; ok {
+
+		embed := &discordgo.MessageEmbed{
+			Color: 0x0FADED, // blueish
+			Author: &discordgo.MessageEmbedAuthor{
+				Name: fmt.Sprintf("%s - Current Game Info\n", userPlayingGame.Username),
+			},
+		}
+
+		// for i := 0; i < len(game.roundWinners); i++ {
+		for i := len(game.roundWinners) - 1; i >= 0; i-- {
+
+			fieldName := fmt.Sprintf("Round %d:", i+1)
+			if len(game.roundWinners) == i+1 {
+				fieldName = "Last Round:"
+			}
+
+			message := fmt.Sprintf("W: %s %s\nL: %s %s\n",
+				game.roundWinners[i].groupName,
+				game.roundWinners[i].biasName,
+				game.roundLosers[i].groupName,
+				game.roundLosers[i].biasName)
+
+			embed.Fields = append(embed.Fields, &discordgo.MessageEmbedField{
+				Name:   fieldName,
+				Value:  message,
+				Inline: true,
+			})
+		}
+
+		// notify user if no rounds have been played in the game yet
+		if len(embed.Fields) == 0 {
+			embed.Fields = append(embed.Fields, &discordgo.MessageEmbedField{
+				Name:   "No Rounds",
+				Value:  utils.Geti18nText("biasgame.current.no-rounds-played"),
+				Inline: true,
+			})
+		}
+
+		// this is to corrent alignment
+		if len(embed.Fields)%3 == 1 {
+			embed.Fields = append(embed.Fields, blankField)
+			embed.Fields = append(embed.Fields, blankField)
+		} else if len(embed.Fields)%3 == 2 {
+			embed.Fields = append(embed.Fields, blankField)
+		}
+
+		utils.SendPagedMessage(msg, embed, 12)
+	} else {
+		utils.SendMessage(msg.ChannelID, "biasgame.current.no-running-game")
+	}
+
 }
 
 // recordGameStats will record the winner, round winners/losers, and other misc stats of a game
