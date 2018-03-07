@@ -44,8 +44,8 @@ type biasChoice struct {
 	webViewLink    string
 	webContentLink string
 
-	// image info
-	biasImage image.Image
+	// image
+	biasImages []image.Image
 
 	// bias info
 	biasName  string
@@ -63,16 +63,20 @@ type singleBiasGame struct {
 	idolsRemaining   int
 	lastRoundMessage *discordgo.Message
 	readyForReaction bool // used to make sure multiple reactions aren't counted
+
+	// a map of fileName => image array position. This is used to make sure that when a random image is selected for a game, that the same image is still used throughout the game
+	gameImageIndex map[string]int
 }
 
 const (
-	DRIVE_SEARCH_TEXT = "\"%s\" in parents and (mimeType = \"image/gif\" or mimeType = \"image/jpeg\" or mimeType = \"image/png\" or mimeType = \"application/vnd.google-apps.folder\")"
-	GIRLS_FOLDER_ID   = "1CIM6yrvZOKn_R-qWYJ6pISHyq-JQRkja"
-	MISC_FOLDER_ID    = "1-HdvH5fiOKuZvPPVkVMILZxkjZKv9x_x"
-
+	DRIVE_SEARCH_TEXT   = "\"%s\" in parents and (mimeType = \"image/gif\" or mimeType = \"image/jpeg\" or mimeType = \"image/png\" or mimeType = \"application/vnd.google-apps.folder\")"
+	GIRLS_FOLDER_ID     = "1CIM6yrvZOKn_R-qWYJ6pISHyq-JQRkja"
+	MISC_FOLDER_ID      = "1-HdvH5fiOKuZvPPVkVMILZxkjZKv9x_x"
 	IMAGE_RESIZE_HEIGHT = 150
 	LEFT_ARROW_EMOJI    = "⬅"
 	RIGHT_ARROW_EMOJI   = "➡"
+	ZERO_WIDTH_SPACE    = "\u200B"
+	BOT_OWNER_ID        = "273639623324991489"
 )
 
 // misc images
@@ -227,63 +231,63 @@ func (b *BiasGame) ActionOnReactionAdd(reaction *discordgo.MessageReactionAdd) {
 		// check if reaction was added to the message of the game
 		if game.lastRoundMessage.ID == reaction.MessageID && game.readyForReaction == true {
 
-		winnerIndex := 0
-		loserIndex := 0
-		validReaction := false
+			winnerIndex := 0
+			loserIndex := 0
+			validReaction := false
 
-		// check if the reaction added to the message was a left or right arrow
-		if LEFT_ARROW_EMOJI == reaction.Emoji.Name {
-			winnerIndex = 0
-			loserIndex = 1
-			validReaction = true
-		} else if RIGHT_ARROW_EMOJI == reaction.Emoji.Name {
-			winnerIndex = 1
-			loserIndex = 0
-			validReaction = true
-		}
-
-		if validReaction == true {
-			game.readyForReaction = false
-			game.idolsRemaining--
-
-			// record winners and losers for stats
-			game.roundLosers = append(game.roundLosers, game.biasQueue[loserIndex])
-			game.roundWinners = append(game.roundWinners, game.biasQueue[winnerIndex])
-
-			// add winner to end of bias queue and remove first two
-			game.biasQueue = append(game.biasQueue, game.biasQueue[winnerIndex])
-			game.biasQueue = game.biasQueue[2:]
-
-			// if there is only one bias left, they are the winner
-			if len(game.biasQueue) == 1 {
-
-				game.gameWinnerBias = game.biasQueue[0]
-				game.sendWinnerMessage()
-
-				// record game stats
-				go recordGameStats(game)
-
-				// end the game. delete from current games
-				delete(currentBiasGames, game.user.ID)
-
-			} else {
-
-				// save the last 8 for the chart
-				if len(game.biasQueue) == 8 {
-					game.topEight = game.biasQueue
-				}
-
-				// Sleep a time bit to allow other users to see what was chosen.
-				// This creates conversation while the game is going and makes it a overall better experience
-				//
-				//   This will also allow me to call out and harshly judge players who don't choose nayoung.
-				time.Sleep(time.Second / 5)
-
-				game.sendBiasGameRound()
+			// check if the reaction added to the message was a left or right arrow
+			if LEFT_ARROW_EMOJI == reaction.Emoji.Name {
+				winnerIndex = 0
+				loserIndex = 1
+				validReaction = true
+			} else if RIGHT_ARROW_EMOJI == reaction.Emoji.Name {
+				winnerIndex = 1
+				loserIndex = 0
+				validReaction = true
 			}
 
+			if validReaction == true {
+				game.readyForReaction = false
+				game.idolsRemaining--
+
+				// record winners and losers for stats
+				game.roundLosers = append(game.roundLosers, game.biasQueue[loserIndex])
+				game.roundWinners = append(game.roundWinners, game.biasQueue[winnerIndex])
+
+				// add winner to end of bias queue and remove first two
+				game.biasQueue = append(game.biasQueue, game.biasQueue[winnerIndex])
+				game.biasQueue = game.biasQueue[2:]
+
+				// if there is only one bias left, they are the winner
+				if len(game.biasQueue) == 1 {
+
+					game.gameWinnerBias = game.biasQueue[0]
+					game.sendWinnerMessage()
+
+					// record game stats
+					go recordGameStats(game)
+
+					// end the game. delete from current games
+					delete(currentBiasGames, game.user.ID)
+
+				} else {
+
+					// save the last 8 for the chart
+					if len(game.biasQueue) == 8 {
+						game.topEight = game.biasQueue
+					}
+
+					// Sleep a time bit to allow other users to see what was chosen.
+					// This creates conversation while the game is going and makes it a overall better experience
+					//
+					//   This will also allow me to call out and harshly judge players who don't choose nayoung.
+					time.Sleep(time.Second / 5)
+
+					game.sendBiasGameRound()
+				}
+
+			}
 		}
-	}
 	}
 
 	// check if the reaction was added to a paged message
@@ -304,8 +308,8 @@ func (g *singleBiasGame) sendBiasGameRound() {
 	}
 
 	// combine first bias image with the "vs" image, then combine that image with 2nd bias image
-	img1 := g.biasQueue[0].biasImage
-	img2 := g.biasQueue[1].biasImage
+	img1 := g.biasQueue[0].getRandomBiasImage(g)
+	img2 := g.biasQueue[1].getRandomBiasImage(g)
 
 	img1 = giveImageShadowBorder(img1, 15, 15)
 	img2 = giveImageShadowBorder(img2, 15, 15)
@@ -397,7 +401,7 @@ func (g *singleBiasGame) sendWinnerMessage() {
 			resizeTo = newResizeVal
 		}
 
-		ri := resize.Resize(0, resizeTo, bias.biasImage, resize.Lanczos3)
+		ri := resize.Resize(0, resizeTo, bias.getRandomBiasImage(g), resize.Lanczos3)
 
 		draw.Draw(bracketImage, ri.Bounds().Add(bracketImageOffsets[i]), ri, image.ZP, draw.Over)
 	}
@@ -416,11 +420,41 @@ func (g *singleBiasGame) sendWinnerMessage() {
 
 	// send message
 	utils.SendFile(g.channelID, "biasgame_winner.png", myReader, messageString)
+	// cache.GetDiscordSession().ChannelMessageSendComplex(g.channelID, &discordgo.MessageSend{
+	// 	Content: g.user.Mention(),
+	// 	Files: []*discordgo.File{{
+	// 		Name:   "biasgame_winner.png",
+	// 		Reader: myReader,
+	// 	}},
+	// 	Embed: &discordgo.MessageEmbed{
+	// 		Title: messageString,
+	// 		Image: &discordgo.MessageEmbedImage{
+	// 			URL: "attachment://biasgame_winner.png",
+	// 		},
+	// 	},
+	// })
 }
 
 // deleteLastGameRoundMessage
 func (g *singleBiasGame) deleteLastGameRoundMessage() {
 	cache.GetDiscordSession().ChannelMessageDelete(g.lastRoundMessage.ChannelID, g.lastRoundMessage.ID)
+}
+
+// will return a random image for the bias,
+//  if an image has already been chosen for the given game and bias thenit will use that one
+func (b *biasChoice) getRandomBiasImage(g *singleBiasGame) image.Image {
+	var imageIndex int
+
+	// check if a random image for the idol has already been chosen for this game
+	//  also make sure that biasimages array contains the index. it may have been changed due to a refresh from googledrive
+	if imagePos, ok := g.gameImageIndex[b.fileName]; ok && len(b.biasImages) > imagePos {
+		imageIndex = imagePos
+	} else {
+		imageIndex = rand.Intn(len(b.biasImages))
+		g.gameImageIndex[b.fileName] = imageIndex
+	}
+
+	return b.biasImages[imageIndex]
 }
 
 // createSinglePlayerGame will setup a singleplayer game for the user
@@ -441,6 +475,7 @@ func createOrGetSinglePlayerGame(msg *discordgo.Message, gameSize int) *singleBi
 			idolsRemaining:   gameSize,
 			readyForReaction: false,
 		}
+		singleGame.gameImageIndex = make(map[string]int)
 
 		// get random biases for the game
 		usedIndexs := make(map[int]bool)
@@ -469,7 +504,7 @@ func refreshBiasChoices() {
 	driveService := cache.GetGoogleDriveService()
 
 	// get bias image from google drive
-	results, err := driveService.Files.List().Q(fmt.Sprintf(DRIVE_SEARCH_TEXT, GIRLS_FOLDER_ID)).Fields(googleapi.Field("nextPageToken, files(name, id, webViewLink, webContentLink)")).PageSize(10).Do()
+	results, err := driveService.Files.List().Q(fmt.Sprintf(DRIVE_SEARCH_TEXT, GIRLS_FOLDER_ID)).Fields(googleapi.Field("nextPageToken, files(name, id, webViewLink, webContentLink)")).PageSize(1000).Do()
 	if err != nil {
 		fmt.Println(err)
 	}
@@ -492,12 +527,18 @@ func refreshBiasChoices() {
 		var wg sync.WaitGroup
 		mux := new(sync.Mutex)
 
+		// clear all biases before refresh
+		allBiasChoices = nil
+
 		fmt.Println("Loading Files:", len(allFiles))
 		for _, file := range allFiles {
 			wg.Add(1)
 
 			go func(file *drive.File) {
 				defer wg.Done()
+				// if !strings.HasPrefix(file.Name, "C") &&  !strings.HasPrefix(file.Name, "T") {
+				// 	return
+				// }
 
 				res, err := http.Get(file.WebContentLink)
 				if err != nil {
@@ -516,22 +557,39 @@ func refreshBiasChoices() {
 				// get bias name and group name from file name
 				groupBias := strings.TrimSuffix(file.Name, filepath.Ext(file.Name))
 
-				biasChoice := &biasChoice{
+				newBiasChoice := &biasChoice{
 					fileName:       file.Name,
 					driveId:        file.Id,
 					webViewLink:    file.WebViewLink,
 					webContentLink: file.WebContentLink,
-					biasImage:      resizedImage,
 					groupName:      strings.Split(groupBias, "_")[0],
 					biasName:       strings.Split(groupBias, "_")[1],
+					biasImages:     []image.Image{resizedImage},
 				}
-				mux.Lock()
-				allBiasChoices = append(allBiasChoices, biasChoice)
-				mux.Unlock()
 
+				mux.Lock()
+				defer mux.Unlock()
+
+				// if the bias already exists, then just add this picture to the image array for the idol
+				for _, currentBias := range allBiasChoices {
+					if currentBias.fileName == newBiasChoice.fileName {
+						currentBias.biasImages = append(currentBias.biasImages, resizedImage)
+						return
+					}
+				}
+
+				allBiasChoices = append(allBiasChoices, newBiasChoice)
 			}(file)
 		}
 		wg.Wait()
+		for _, currentBias := range allBiasChoices {
+			fmt.Printf("%s %s | %s | %d\n",
+				currentBias.groupName,
+				currentBias.biasName,
+				currentBias.fileName,
+				len(currentBias.biasImages))
+		}
+
 	} else {
 		fmt.Println("No bias files found.")
 	}
