@@ -172,6 +172,19 @@ func (b *BiasGame) Action(command string, content string, msg *discordgo.Message
 	} else if strings.Index(content, "suggest") == 0 {
 
 		biasgame.ProcessImageSuggestion(msg, content)
+	} else if strings.Index(content, "refresh-images") == 0 {
+
+		// check if the user is the bot owner
+		if msg.Author.ID == BOT_OWNER_ID {
+
+			message, _ := utils.SendMessage(msg.ChannelID, "biasgame.refresh.refresing")
+			refreshBiasChoices()
+
+			cache.GetDiscordSession().ChannelMessageDelete(msg.ChannelID, message.ID)
+			utils.SendMessage(msg.ChannelID, "biasgame.refresh.refresh-done")
+		} else {
+			utils.SendMessage(msg.ChannelID, "biasgame.refresh.not-bot-owner")
+		}
 	} else if content == "" {
 
 		singleGame := createOrGetSinglePlayerGame(msg, 32)
