@@ -6,7 +6,6 @@ import (
 	"image"
 	"image/draw"
 	"image/png"
-	"io/ioutil"
 	"math/rand"
 	"net/http"
 	"path/filepath"
@@ -16,23 +15,17 @@ import (
 	"sync"
 	"time"
 
-	"github.com/globalsign/mgo"
-
-	"github.com/globalsign/mgo/bson"
-
-	"github.com/Snakeyesz/snek-bot/models"
-
-	"google.golang.org/api/googleapi"
-
-	"github.com/nfnt/resize"
-
-	"google.golang.org/api/drive/v3"
-
-	"github.com/Snakeyesz/snek-bot/utils"
-
 	"github.com/Snakeyesz/snek-bot/cache"
+	"github.com/Snakeyesz/snek-bot/models"
 	"github.com/Snakeyesz/snek-bot/modules/plugins/biasgame"
+	"github.com/Snakeyesz/snek-bot/utils"
 	"github.com/bwmarrin/discordgo"
+	"github.com/globalsign/mgo"
+	"github.com/globalsign/mgo/bson"
+	"github.com/nfnt/resize"
+	"github.com/sethgrid/pester"
+	"google.golang.org/api/drive/v3"
+	"google.golang.org/api/googleapi"
 )
 
 type BiasGame struct{}
@@ -43,6 +36,7 @@ type biasChoice struct {
 	driveId        string
 	webViewLink    string
 	webContentLink string
+	gender         string
 
 	// image
 	biasImages []image.Image
@@ -62,7 +56,8 @@ type singleBiasGame struct {
 	gameWinnerBias   *biasChoice
 	idolsRemaining   int
 	lastRoundMessage *discordgo.Message
-	readyForReaction bool // used to make sure multiple reactions aren't counted
+	readyForReaction bool   // used to make sure multiple reactions aren't counted
+	gender           string // girl, boy, mixed
 
 	// a map of fileName => image array position. This is used to make sure that when a random image is selected for a game, that the same image is still used throughout the game
 	gameImageIndex map[string]int
@@ -71,6 +66,7 @@ type singleBiasGame struct {
 const (
 	DRIVE_SEARCH_TEXT   = "\"%s\" in parents and (mimeType = \"image/gif\" or mimeType = \"image/jpeg\" or mimeType = \"image/png\" or mimeType = \"application/vnd.google-apps.folder\")"
 	GIRLS_FOLDER_ID     = "1CIM6yrvZOKn_R-qWYJ6pISHyq-JQRkja"
+	BOYS_FOLDER_ID      = "1psrhQQaV0kwPhAMtJ7LYT2SWgLoyDb-J"
 	MISC_FOLDER_ID      = "1-HdvH5fiOKuZvPPVkVMILZxkjZKv9x_x"
 	IMAGE_RESIZE_HEIGHT = 150
 	LEFT_ARROW_EMOJI    = "⬅"
@@ -87,11 +83,28 @@ var crown image.Image
 
 var allBiasChoices []*biasChoice
 var currentBiasGames map[string]*singleBiasGame
-var bracketHTML string
+var allowedGameSizes map[int]bool
+var biasGameGenders map[string]string
 
 func (b *BiasGame) InitPlugin() {
 
 	currentBiasGames = make(map[string]*singleBiasGame)
+
+	allowedGameSizes = map[int]bool{
+		10:  true, // for dev only, remove when game is live
+		32:  true,
+		64:  true,
+		128: true,
+		256: true,
+	}
+
+	biasGameGenders = map[string]string{
+		"boy":   "boy",
+		"boys":  "boy",
+		"girl":  "girl",
+		"girls": "girl",
+		"mixed": "mixed",
+	}
 
 	// load all bias images and information
 	refreshBiasChoices()
@@ -143,15 +156,6 @@ func (b *BiasGame) InitPlugin() {
 	draw.Draw(bracketImage, winnerBracket.Bounds(), winnerBracket, image.Point{0, 0}, draw.Src)
 	draw.Draw(bracketImage, crown.Bounds().Add(image.Pt(230, 5)), crown, image.ZP, draw.Over)
 	winnerBracket = bracketImage.SubImage(bracketImage.Rect)
-
-	// load bracket html
-	var temp []byte
-	assetsPath := cache.GetAppConfig().Path("assets_folder").Data().(string)
-	temp, err = ioutil.ReadFile(assetsPath + "/BiasGame/top-8.html")
-	if err != nil {
-		fmt.Println(err)
-	}
-	bracketHTML = string(temp)
 }
 
 // Will validate if the pass command entered is used for this plugin
@@ -170,19 +174,29 @@ func (b *BiasGame) ValidateCommand(command string) bool {
 // Main Entry point for the plugin
 func (b *BiasGame) Action(command string, content string, msg *discordgo.Message, session *discordgo.Session) {
 
-	// stats
-	if strings.Index(content, "stats") == 0 {
-		printUserStats(msg, content)
+	commandArgs := strings.Fields(content)
 
-	} else if strings.Index(content, "suggest") == 0 {
+	if len(commandArgs) == 0 {
 
+		singleGame := createOrGetSinglePlayerGame(msg, "girl", 32)
+		singleGame.sendBiasGameRound()
+
+	} else if commandArgs[0] == "stats" {
+		// stats
+		displayBiasGameStats(msg, content)
+
+	} else if commandArgs[0] == "suggest" {
 		biasgame.ProcessImageSuggestion(msg, content)
 
-	} else if strings.Index(content, "current") == 0 {
+	} else if commandArgs[0] == "current" {
 
 		displayCurrentGameStats(msg)
 
-	} else if strings.Index(content, "refresh-images") == 0 {
+	} else if commandArgs[0] == "idols" {
+
+		listIdolsInGame(msg)
+
+	} else if commandArgs[0] == "refresh-images" {
 
 		// check if the user is the bot owner
 		if msg.Author.ID == BOT_OWNER_ID {
@@ -195,27 +209,34 @@ func (b *BiasGame) Action(command string, content string, msg *discordgo.Message
 		} else {
 			utils.SendMessage(msg.ChannelID, "biasgame.refresh.not-bot-owner")
 		}
-	} else if content == "" {
 
-		singleGame := createOrGetSinglePlayerGame(msg, 32)
-		singleGame.sendBiasGameRound()
-	} else if gameSize, err := strconv.Atoi(content); err == nil {
-
-		allowedGameSizes := map[int]bool{
-			10:  true, // for dev only, remove when game is live
-			32:  true,
-			64:  true,
-			128: true,
-			256: true,
-		}
+	} else if gameSize, err := strconv.Atoi(commandArgs[0]); err == nil {
 
 		// check if the game size the user wants is valid
 		if allowedGameSizes[gameSize] {
-			singleGame := createOrGetSinglePlayerGame(msg, gameSize)
+			singleGame := createOrGetSinglePlayerGame(msg, "girl", gameSize)
 			singleGame.sendBiasGameRound()
 		} else {
 			utils.SendMessage(msg.ChannelID, "biasgame.game.invalid-game-size")
 			return
+		}
+
+	} else if gameGender, ok := biasGameGenders[commandArgs[0]]; ok {
+
+		// check if the game size the user wants is valid
+		if len(commandArgs) == 2 {
+
+			gameSize, _ := strconv.Atoi(commandArgs[1])
+			if allowedGameSizes[gameSize] {
+				singleGame := createOrGetSinglePlayerGame(msg, gameGender, gameSize)
+				singleGame.sendBiasGameRound()
+			} else {
+				utils.SendMessage(msg.ChannelID, "biasgame.game.invalid-game-size")
+				return
+			}
+		} else {
+			singleGame := createOrGetSinglePlayerGame(msg, gameGender, 32)
+			singleGame.sendBiasGameRound()
 		}
 
 	}
@@ -301,6 +322,9 @@ func (b *BiasGame) ActionOnReactionAdd(reaction *discordgo.MessageReactionAdd) {
 
 // sendBiasGameRound will send the message for the round
 func (g *singleBiasGame) sendBiasGameRound() {
+	if g == nil {
+		return
+	}
 
 	// if a round message has been sent, delete before sending the next one
 	if g.lastRoundMessage != nil {
@@ -420,19 +444,6 @@ func (g *singleBiasGame) sendWinnerMessage() {
 
 	// send message
 	utils.SendFile(g.channelID, "biasgame_winner.png", myReader, messageString)
-	// cache.GetDiscordSession().ChannelMessageSendComplex(g.channelID, &discordgo.MessageSend{
-	// 	Content: g.user.Mention(),
-	// 	Files: []*discordgo.File{{
-	// 		Name:   "biasgame_winner.png",
-	// 		Reader: myReader,
-	// 	}},
-	// 	Embed: &discordgo.MessageEmbed{
-	// 		Title: messageString,
-	// 		Image: &discordgo.MessageEmbedImage{
-	// 			URL: "attachment://biasgame_winner.png",
-	// 		},
-	// 	},
-	// })
 }
 
 // deleteLastGameRoundMessage
@@ -458,8 +469,9 @@ func (b *biasChoice) getRandomBiasImage(g *singleBiasGame) image.Image {
 }
 
 // createSinglePlayerGame will setup a singleplayer game for the user
-func createOrGetSinglePlayerGame(msg *discordgo.Message, gameSize int) *singleBiasGame {
+func createOrGetSinglePlayerGame(msg *discordgo.Message, gameGender string, gameSize int) *singleBiasGame {
 	var singleGame *singleBiasGame
+	fmt.Println("game gender: ", gameGender)
 
 	// check if the user has a current game already going.
 	// if so update the channel id for the game incase the user tried starting the game from another server
@@ -468,23 +480,45 @@ func createOrGetSinglePlayerGame(msg *discordgo.Message, gameSize int) *singleBi
 		game.channelID = msg.ChannelID
 		singleGame = game
 	} else {
+		var biasChoices []*biasChoice
+
+		// if this isn't a mixed game then filter all choices by the gender
+		if gameGender != "mixed" {
+
+			for _, bias := range allBiasChoices {
+				if bias.gender == gameGender {
+					fmt.Println("included biases: ", bias.groupName, bias.biasName, bias.gender)
+					biasChoices = append(biasChoices, bias)
+				}
+			}
+		} else {
+			biasChoices = allBiasChoices
+		}
+
+		// confirm we have enough biases to choose from for the game size this should be
+		if len(biasChoices) < gameSize {
+			utils.SendMessage(msg.ChannelID, "biasgame.game.not-enough-idols")
+			return nil
+		}
+
 		// create new game
 		singleGame = &singleBiasGame{
 			user:             msg.Author,
 			channelID:        msg.ChannelID,
 			idolsRemaining:   gameSize,
 			readyForReaction: false,
+			gender:           gameGender,
 		}
 		singleGame.gameImageIndex = make(map[string]int)
 
 		// get random biases for the game
 		usedIndexs := make(map[int]bool)
-		for i := 0; true; i++ {
-			randomIndex := rand.Intn(len(allBiasChoices))
+		for true {
+			randomIndex := rand.Intn(len(biasChoices))
 
 			if usedIndexs[randomIndex] == false {
 				usedIndexs[randomIndex] = true
-				singleGame.biasQueue = append(singleGame.biasQueue, allBiasChoices[randomIndex])
+				singleGame.biasQueue = append(singleGame.biasQueue, biasChoices[randomIndex])
 
 				if len(singleGame.biasQueue) == gameSize {
 					break
@@ -501,27 +535,11 @@ func createOrGetSinglePlayerGame(msg *discordgo.Message, gameSize int) *singleBi
 
 // refreshes the list of bias choices
 func refreshBiasChoices() {
-	driveService := cache.GetGoogleDriveService()
 
-	// get bias image from google drive
-	results, err := driveService.Files.List().Q(fmt.Sprintf(DRIVE_SEARCH_TEXT, GIRLS_FOLDER_ID)).Fields(googleapi.Field("nextPageToken, files(name, id, webViewLink, webContentLink)")).PageSize(1000).Do()
-	if err != nil {
-		fmt.Println(err)
-	}
-	allFiles := results.Files
-
-	// retry for more bias images if needed
-	// pageToken := results.NextPageToken
-	// for pageToken != "" {
-	// 	results, err = driveService.Files.List().Q(fmt.Sprintf(DRIVE_SEARCH_TEXT, GIRLS_FOLDER_ID)).Fields(googleapi.Field("nextPageToken, files(name, id, webViewLink, webContentLink)")).PageSize(1000).PageToken(pageToken).Do()
-	// 	pageToken = results.NextPageToken
-	// 	if len(results.Files) > 0 {
-	// 		allFiles = append(allFiles, results.Files...)
-	// 	} else {
-	// 		break
-	// 	}
-
-	// }
+	// get idol image from google drive
+	girlFiles := getFilesFromDriveFolder(GIRLS_FOLDER_ID)
+	boyFiles := getFilesFromDriveFolder(BOYS_FOLDER_ID)
+	allFiles := append(girlFiles, boyFiles...)
 
 	if len(allFiles) > 0 {
 		var wg sync.WaitGroup
@@ -536,26 +554,48 @@ func refreshBiasChoices() {
 
 			go func(file *drive.File) {
 				defer wg.Done()
-				// if !strings.HasPrefix(file.Name, "C") &&  !strings.HasPrefix(file.Name, "T") {
+
+				// if !strings.HasPrefix(file.Name, "P") && !strings.HasPrefix(file.Name, "T") && !strings.HasPrefix(file.Name, "S") {
 				// 	return
 				// }
 
-				res, err := http.Get(file.WebContentLink)
+				res, err := pester.Get(file.WebContentLink)
 				if err != nil {
+					fmt.Println("get error: ", err.Error())
 					return
 				}
 
 				// decode image
 				img, _, imgErr := image.Decode(res.Body)
 				if imgErr != nil {
-					fmt.Printf("error decoding image %s:\n %s", file.Name, imgErr)
-					return
+
+					// if image fails decoding, which has been happening randomly. attempt to decode it again up to 5 times
+					for i := 0; i < 5; i++ {
+						img, _, imgErr = image.Decode(res.Body)
+
+						if imgErr == nil {
+							break
+						}
+					}
+
+					// if image still can't be decoded, then leave it out of the game
+					if imgErr != nil {
+						fmt.Printf("error decoding image %s:\n %s", file.Name, imgErr)
+						return
+					}
 				}
 
 				resizedImage := resize.Resize(0, IMAGE_RESIZE_HEIGHT, img, resize.Lanczos3)
 
 				// get bias name and group name from file name
 				groupBias := strings.TrimSuffix(file.Name, filepath.Ext(file.Name))
+
+				var gender string
+				if file.Parents[0] == GIRLS_FOLDER_ID {
+					gender = "girl"
+				} else {
+					gender = "boy"
+				}
 
 				newBiasChoice := &biasChoice{
 					fileName:       file.Name,
@@ -565,6 +605,7 @@ func refreshBiasChoices() {
 					groupName:      strings.Split(groupBias, "_")[0],
 					biasName:       strings.Split(groupBias, "_")[1],
 					biasImages:     []image.Image{resizedImage},
+					gender:         gender,
 				}
 
 				mux.Lock()
@@ -582,17 +623,77 @@ func refreshBiasChoices() {
 			}(file)
 		}
 		wg.Wait()
-		for _, currentBias := range allBiasChoices {
-			fmt.Printf("%s %s | %s | %d\n",
-				currentBias.groupName,
-				currentBias.biasName,
-				currentBias.fileName,
-				len(currentBias.biasImages))
-		}
+		fmt.Println("Amount of idols loaded: ", len(allBiasChoices))
 
 	} else {
 		fmt.Println("No bias files found.")
 	}
+}
+
+// getFilesFromDriveFolder
+func getFilesFromDriveFolder(folderId string) []*drive.File {
+	driveService := cache.GetGoogleDriveService()
+
+	// get girls image from google drive
+	results, err := driveService.Files.List().Q(fmt.Sprintf(DRIVE_SEARCH_TEXT, folderId)).Fields(googleapi.Field("nextPageToken, files(name, id, parents, webViewLink, webContentLink)")).PageSize(1000).Do()
+	if err != nil {
+		fmt.Printf("Error getting google drive files from folderid: %s\n%s\n", folderId, err.Error())
+		return nil
+	}
+	allFiles := results.Files
+
+	// retry for more bias images if needed
+	pageToken := results.NextPageToken
+	for pageToken != "" {
+		results, err = driveService.Files.List().Q(fmt.Sprintf(DRIVE_SEARCH_TEXT, folderId)).Fields(googleapi.Field("nextPageToken, files(name, id, parents, webViewLink, webContentLink)")).PageSize(1000).PageToken(pageToken).Do()
+		pageToken = results.NextPageToken
+		if len(results.Files) > 0 {
+			allFiles = append(allFiles, results.Files...)
+		} else {
+			break
+		}
+	}
+
+	return allFiles
+}
+
+// listIdolsInGame will list all idols that can show up in the biasgame
+func listIdolsInGame(msg *discordgo.Message) {
+
+	// create map of idols and there group
+	groupIdolMap := make(map[string][]string)
+	for _, bias := range allBiasChoices {
+		groupIdolMap[bias.groupName] = append(groupIdolMap[bias.groupName], bias.biasName)
+	}
+
+	embed := &discordgo.MessageEmbed{
+		Color: 0x0FADED, // blueish
+		Author: &discordgo.MessageEmbedAuthor{
+			Name: fmt.Sprintf("All Idols Available In Bias Game (%d total)", len(allBiasChoices)),
+		},
+	}
+
+	// make fields for each group and the idols in the group.
+	for group, idols := range groupIdolMap {
+
+		// sort idols by name
+		sort.Slice(idols, func(i, j int) bool {
+			return idols[i] < idols[j]
+		})
+
+		embed.Fields = append(embed.Fields, &discordgo.MessageEmbedField{
+			Name:   group,
+			Value:  strings.Join(idols, ", "),
+			Inline: false,
+		})
+	}
+
+	// sort fields by group name
+	sort.Slice(embed.Fields, func(i, j int) bool {
+		return strings.ToLower(embed.Fields[i].Name) < strings.ToLower(embed.Fields[j].Name)
+	})
+
+	utils.SendPagedMessage(msg, embed, 10)
 }
 
 // displayCurrentGameStats will list the rounds and round winners of a currently running game
@@ -680,19 +781,21 @@ func recordGameStats(game *singleBiasGame) {
 		ID:           "",
 		UserID:       game.user.ID,
 		GuildID:      guild.ID,
+		Gender:       game.gender,
 		RoundWinners: compileGameWinnersLosers(game.roundWinners),
 		RoundLosers:  compileGameWinnersLosers(game.roundLosers),
 		GameWinner: models.BiasEntry{
 			Name:      game.gameWinnerBias.biasName,
 			GroupName: game.gameWinnerBias.groupName,
+			Gender:    game.gameWinnerBias.gender,
 		},
 	}
 
 	utils.MongoDBInsert(models.BiasGameTable, biasGameEntry)
 }
 
-// printUserWinners
-func printUserStats(msg *discordgo.Message, statsMessage string) {
+// displayBiasGameStats will display stats for the bias game based on the stats message
+func displayBiasGameStats(msg *discordgo.Message, statsMessage string) {
 	results, iconURL, targetName := getStatsResults(msg, statsMessage)
 
 	// check if the user has stats and give a message if they do not
@@ -704,6 +807,11 @@ func printUserStats(msg *discordgo.Message, statsMessage string) {
 
 	statsTitle := ""
 	countsHeader := ""
+	totalGames, err := results.Count()
+	if err != nil {
+		fmt.Println("Err getting stat result count: ", err.Error())
+		return
+	}
 
 	// loop through the results and compile a map of [biasgroup biasname]number of occurences
 	items := results.Iter()
@@ -763,6 +871,9 @@ func printUserStats(msg *discordgo.Message, statsMessage string) {
 		}
 	}
 
+	// add total games to the stats header message
+	statsTitle = fmt.Sprintf("%s (%d games)", statsTitle, totalGames)
+
 	sendStatsMessage(msg, statsTitle, countsHeader, biasCounts, iconURL, targetName)
 }
 
@@ -799,19 +910,25 @@ func getStatsResults(msg *discordgo.Message, statsMessage string) (*mgo.Query, s
 		queryParams["userid"] = msg.Author.ID
 	}
 
-	// date checks
-	if strings.Contains(statsMessage, "today") {
-		// dateCheck := bson.NewObjectIdWithTime()
-		messageTime, _ := msg.Timestamp.Parse()
-
-		from := time.Date(time.Now().Year(), time.Now().Month(), time.Now().Day(), 0, 0, 0, 0, messageTime.Location())
-		to := time.Date(time.Now().Year(), time.Now().Month(), time.Now().Day(), 23, 59, 59, 0, messageTime.Location())
-
-		fromId := bson.NewObjectIdWithTime(from)
-		toId := bson.NewObjectIdWithTime(to)
-
-		queryParams["_id"] = bson.M{"$gte": fromId, "$lt": toId}
+	if strings.Contains(statsMessage, "boy") || strings.Contains(statsMessage, "boys") {
+		queryParams["gamewinner.gender"] = "boy"
+	} else if strings.Contains(statsMessage, "girl") || strings.Contains(statsMessage, "girls") {
+		queryParams["gamewinner.gender"] = "girl"
 	}
+
+	// date checks
+	// if strings.Contains(statsMessage, "today") {
+	// 	// dateCheck := bson.NewObjectIdWithTime()
+	// 	messageTime, _ := msg.Timestamp.Parse()
+
+	// 	from := time.Date(time.Now().Year(), time.Now().Month(), time.Now().Day(), 0, 0, 0, 0, messageTime.Location())
+	// 	to := time.Date(time.Now().Year(), time.Now().Month(), time.Now().Day(), 23, 59, 59, 0, messageTime.Location())
+
+	// 	fromId := bson.NewObjectIdWithTime(from)
+	// 	toId := bson.NewObjectIdWithTime(to)
+
+	// 	queryParams["_id"] = bson.M{"$gte": fromId, "$lt": toId}
+	// }
 
 	return utils.MongoDBSearch(models.BiasGameTable, queryParams), iconURL, targetName
 }
@@ -907,6 +1024,7 @@ func compileGameWinnersLosers(biases []*biasChoice) []models.BiasEntry {
 		biasEntries = append(biasEntries, models.BiasEntry{
 			Name:      bias.biasName,
 			GroupName: bias.groupName,
+			Gender:    bias.gender,
 		})
 	}
 

@@ -11,6 +11,7 @@ const (
 type BiasEntry struct {
 	Name      string
 	GroupName string
+	Gender    string
 }
 
 type SingleBiasGameEntry struct {
@@ -20,4 +21,5 @@ type SingleBiasGameEntry struct {
 	GameWinner   BiasEntry
 	RoundWinners []BiasEntry
 	RoundLosers  []BiasEntry
+	Gender       string // girl, boy, mixed
 }
