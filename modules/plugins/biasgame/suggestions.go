@@ -37,12 +37,18 @@ func init() {
 
 // processImageSuggestion
 func ProcessImageSuggestion(msg *discordgo.Message, msgContent string) {
-
-	suggestionArgs := str.ToArgv(msgContent)[1:]
-
 	invalidArgsMessage := "Invalid suggestion arguments. \n\n" +
 		"Suggestion must be done with the following format:\n```!biasgame suggest [boy/girl] \"group name\" \"idol name\" [url to image]```\n" +
 		"For Example:\n```!biasgame suggest girl \"PRISTIN\" \"Nayoung\" https://cdn.discordapp.com/attachments/420049316615553026/420056295618510849/unknown.png```\n\n"
+
+	defer func() {
+		if r := recover(); r != nil {
+			utils.SendMessage(msg.ChannelID, invalidArgsMessage)
+		}
+	}()
+
+	// ToArgv can panic, need to catch that
+	suggestionArgs := str.ToArgv(msgContent)[1:]
 
 	// validate suggestion args
 	if len(suggestionArgs) != 4 {
