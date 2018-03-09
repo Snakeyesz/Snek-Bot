@@ -21,7 +21,8 @@
 			"no-stats": "No stats found. Playing the game using the command `!biasgame` will add to your stats."
 		},
 		"game": {
-			"invalid-game-size": "Sorry, that game size is not valid. Valid sizes are: 32, 64, 128, or 256"
+			"invalid-game-size": "Sorry, that game size is not valid. Valid sizes are: 32, 64, 128, or 256",
+			"not-enough-idols": "There are not enough idols for a game of that size"
 		},
 		"suggestion": {
 			"image-not-square": "The suggested image must be a perfect square. Please crop the image and try again.",
