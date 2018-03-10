@@ -75,6 +75,9 @@ const (
 	BOT_OWNER_ID        = "273639623324991489"
 )
 
+// used to determine if game is ready after a bot restart
+var gameIsReady = false
+
 // misc images
 var versesImage image.Image
 var winnerBracket image.Image
@@ -159,6 +162,9 @@ func (b *BiasGame) InitPlugin() {
 
 	// set up suggestions channel
 	biasgame.InitSuggestionChannel()
+
+	// this line should always be last in this function
+	gameIsReady = true
 }
 
 // Will validate if the pass command entered is used for this plugin
@@ -176,6 +182,10 @@ func (b *BiasGame) ValidateCommand(command string) bool {
 
 // Main Entry point for the plugin
 func (b *BiasGame) Action(command string, content string, msg *discordgo.Message, session *discordgo.Session) {
+	if gameIsReady == false {
+		utils.SendMessage(msg.ChannelID, "biasgame.game.game-not-ready")
+		return
+	}
 
 	commandArgs := strings.Fields(content)
 
@@ -248,6 +258,9 @@ func (b *BiasGame) Action(command string, content string, msg *discordgo.Message
 
 // Called whenever a reaction is added to any message
 func (b *BiasGame) ActionOnReactionAdd(reaction *discordgo.MessageReactionAdd) {
+	if gameIsReady == false {
+		return
+	}
 
 	// confirm the reaction was added to a message for one bias games
 	if game, ok := currentBiasGames[reaction.UserID]; ok == true {

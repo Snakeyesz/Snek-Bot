@@ -46,7 +46,7 @@ func InitPlugins() {
 	}
 
 	for _, plugin := range pluginList {
-		plugin.InitPlugin()
+		go plugin.InitPlugin()
 	}
 }
 
