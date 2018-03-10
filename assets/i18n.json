@@ -27,7 +27,9 @@
 		"suggestion": {
 			"image-not-square": "The suggested image must be a perfect square. Please crop the image and try again.",
 			"invalid-url": "Could not retrieve image from the given url.",
-			"thanks-for-suggestion": "Thank you for your suggestion! It has been recorded and will be reviewed. If your permission allow, you will be notified when your suggestion is reviewed."
+			"thanks-for-suggestion": "Thank you for your suggestion! It has been recorded and will be reviewed. If your permission allow, you will be notified when your suggestion is reviewed.",
+			"not-png-format": "Images must be in png format.",
+			"image-to-big": "Images must be less than 2000px by 2000px."
 		},
 		"current": {
 			"no-running-game": "No currently running game found.",
