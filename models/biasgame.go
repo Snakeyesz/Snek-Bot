@@ -5,7 +5,8 @@ import (
 )
 
 const (
-	BiasGameTable MongoDbCollection = "biasgame"
+	BiasGameTable            MongoDbCollection = "biasgame"
+	BiasGameSuggestionsTable MongoDbCollection = "biasgamesuggestions"
 )
 
 type BiasEntry struct {
@@ -22,4 +23,14 @@ type SingleBiasGameEntry struct {
 	RoundWinners []BiasEntry
 	RoundLosers  []BiasEntry
 	Gender       string // girl, boy, mixed
+}
+
+type BiasGameSuggestion struct {
+	ID         bson.ObjectId `bson:"_id,omitempty"`
+	UserID     string        // user who made the message
+	Name       string
+	GrouopName string
+	Gender     string
+	ImageURL   string
+	ChannelID  string // channel suggestion was made in
 }
