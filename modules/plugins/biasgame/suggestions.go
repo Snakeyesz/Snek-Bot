@@ -80,11 +80,21 @@ func ProcessImageSuggestion(msg *discordgo.Message, msgContent string, groupIdol
 
 	// ToArgv can panic, need to catch that
 	suggestionArgs := str.ToArgv(msgContent)[1:]
+	var suggestedImageUrl string
 
-	// validate suggestion args
-	if len(suggestionArgs) != 4 {
-		utils.SendMessage(msg.ChannelID, invalidArgsMessage)
-		return
+	// validate suggestion arg amount.
+	if len(msg.Attachments) == 1 {
+		if len(suggestionArgs) != 3 {
+			utils.SendMessage(msg.ChannelID, invalidArgsMessage)
+			return
+		}
+		suggestedImageUrl = msg.Attachments[0].URL
+	} else {
+		if len(suggestionArgs) != 4 {
+			utils.SendMessage(msg.ChannelID, invalidArgsMessage)
+			return
+		}
+		suggestedImageUrl = suggestionArgs[3]
 	}
 
 	// set gender to lowercase and check if its valid
@@ -95,7 +105,7 @@ func ProcessImageSuggestion(msg *discordgo.Message, msgContent string, groupIdol
 	}
 
 	// validate url image
-	resp, err := pester.Get(suggestionArgs[3])
+	resp, err := pester.Get(suggestedImageUrl)
 	if err != nil {
 		utils.SendMessage(msg.ChannelID, "biasgame.suggestion.invalid-url")
 		return
@@ -174,7 +184,7 @@ func ProcessImageSuggestion(msg *discordgo.Message, msgContent string, groupIdol
 		Gender:     suggestionArgs[0],
 		GrouopName: suggestionArgs[1],
 		Name:       suggestionArgs[2],
-		ImageURL:   suggestionArgs[3],
+		ImageURL:   suggestedImageUrl,
 		GroupMatch: groupMatch,
 		IdolMatch:  idolMatch,
 	}
