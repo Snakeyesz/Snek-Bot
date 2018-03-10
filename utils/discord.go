@@ -3,6 +3,7 @@ package utils
 import (
 	"errors"
 	"io"
+	"time"
 
 	"github.com/Snakeyesz/snek-bot/cache"
 	"github.com/bwmarrin/discordgo"
@@ -184,4 +185,14 @@ func CalculateFullEmbedLength(embed *discordgo.MessageEmbed) (count int) {
 		count += len(field.Value)
 	}
 	return count
+}
+
+// DeleteImageWithDelay will delete the given message after a given time duration
+func DeleteImageWithDelay(msg *discordgo.Message, delay time.Duration) {
+	if msg == nil {
+		return
+	}
+
+	time.Sleep(time.Second * 15)
+	cache.GetDiscordSession().ChannelMessageDelete(msg.ChannelID, msg.ID)
 }
