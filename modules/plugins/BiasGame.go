@@ -332,8 +332,12 @@ func (b *BiasGame) ActionOnReactionAdd(reaction *discordgo.MessageReactionAdd) {
 		pagedMessage.UpdateMessagePage(reaction)
 	}
 
-	// check if this was a reaction to a idol suggestion
-	biasgame.CheckSuggestionReaction(reaction)
+	// check if this was a reaction to a idol suggestion.
+	//  if it was accepted an image will be returned to be added to the biasChoices
+	suggestedImageDriveFile := biasgame.CheckSuggestionReaction(reaction)
+	if suggestedImageDriveFile != nil {
+		addDriveFileToAllBiases(suggestedImageDriveFile)
+	}
 }
 
 // sendBiasGameRound will send the message for the round
@@ -562,83 +566,40 @@ func refreshBiasChoices() {
 		mux := new(sync.Mutex)
 
 		// clear all biases before refresh
-		allBiasChoices = nil
+		var tempAllBiases []*biasChoice
 
 		fmt.Println("Loading Files:", len(allFiles))
 		for _, file := range allFiles {
-			if !strings.HasPrefix(file.Name, "P") && !strings.HasPrefix(file.Name, "T") {
-				continue
-			}
+			// if !strings.HasPrefix(file.Name, "P") && !strings.HasPrefix(file.Name, "T") {
+			// 	continue
+			// }
 			wg.Add(1)
 
 			go func(file *drive.File) {
 				defer wg.Done()
 
-				res, err := pester.Get(file.WebContentLink)
+				newBiasChoice, err := makeBiasChoiceFromDriveFile(file)
 				if err != nil {
-					fmt.Println("get error: ", err.Error())
 					return
-				}
-
-				// decode image
-				img, _, imgErr := image.Decode(res.Body)
-				if imgErr != nil {
-
-					// if image fails decoding, which has been happening randomly. attempt to decode it again up to 5 times
-					for i := 0; i < 5; i++ {
-						img, _, imgErr = image.Decode(res.Body)
-
-						if imgErr == nil {
-							break
-						}
-					}
-
-					// if image still can't be decoded, then leave it out of the game
-					if imgErr != nil {
-						fmt.Printf("error decoding image %s:\n %s", file.Name, imgErr)
-						return
-					}
-				}
-
-				resizedImage := resize.Resize(0, IMAGE_RESIZE_HEIGHT, img, resize.Lanczos3)
-
-				// get bias name and group name from file name
-				groupBias := strings.TrimSuffix(file.Name, filepath.Ext(file.Name))
-
-				var gender string
-				if file.Parents[0] == GIRLS_FOLDER_ID {
-					gender = "girl"
-				} else {
-					gender = "boy"
-				}
-
-				newBiasChoice := &biasChoice{
-					fileName:       file.Name,
-					driveId:        file.Id,
-					webViewLink:    file.WebViewLink,
-					webContentLink: file.WebContentLink,
-					groupName:      strings.Split(groupBias, "_")[0],
-					biasName:       strings.Split(groupBias, "_")[1],
-					biasImages:     []image.Image{resizedImage},
-					gender:         gender,
 				}
 
 				mux.Lock()
 				defer mux.Unlock()
 
 				// if the bias already exists, then just add this picture to the image array for the idol
-				for _, currentBias := range allBiasChoices {
+				for _, currentBias := range tempAllBiases {
 					if currentBias.fileName == newBiasChoice.fileName {
-						currentBias.biasImages = append(currentBias.biasImages, resizedImage)
+						currentBias.biasImages = append(currentBias.biasImages, newBiasChoice.biasImages[0])
 						return
 					}
 				}
 
-				allBiasChoices = append(allBiasChoices, newBiasChoice)
+				tempAllBiases = append(tempAllBiases, newBiasChoice)
 			}(file)
 		}
 		wg.Wait()
-		fmt.Println("Amount of idols loaded: ", len(allBiasChoices))
+		fmt.Println("Amount of idols loaded: ", len(tempAllBiases))
+		allBiasChoices = tempAllBiases
 
 	} else {
 		fmt.Println("No bias files found.")
@@ -670,6 +631,66 @@ func getFilesFromDriveFolder(folderId string) []*drive.File {
 	}
 
 	return allFiles
+}
+
+// makeBiasChoiceFromDriveFile
+func makeBiasChoiceFromDriveFile(file *drive.File) (*biasChoice, error) {
+	res, err := pester.Get(file.WebContentLink)
+	if err != nil {
+		fmt.Println("get error: ", err.Error())
+		return nil, err
+	}
+
+	// decode image
+	img, imgErr := utils.DecodeImage(res.Body)
+	if imgErr != nil {
+		fmt.Printf("error decoding image %s:\n %s", file.Name, imgErr)
+		return nil, imgErr
+	}
+
+	resizedImage := resize.Resize(0, IMAGE_RESIZE_HEIGHT, img, resize.Lanczos3)
+
+	// get bias name and group name from file name
+	groupBias := strings.TrimSuffix(file.Name, filepath.Ext(file.Name))
+
+	var gender string
+	if file.Parents[0] == GIRLS_FOLDER_ID {
+		gender = "girl"
+	} else {
+		gender = "boy"
+	}
+
+	newBiasChoice := &biasChoice{
+		fileName:       file.Name,
+		driveId:        file.Id,
+		webViewLink:    file.WebViewLink,
+		webContentLink: file.WebContentLink,
+		groupName:      strings.Split(groupBias, "_")[0],
+		biasName:       strings.Split(groupBias, "_")[1],
+		biasImages:     []image.Image{resizedImage},
+		gender:         gender,
+	}
+
+	return newBiasChoice, nil
+}
+
+// addDriveFileToAllBiases will take a drive file, convert it to a bias object,
+//   and add it to allBiasChoices or add a new image if the idol already exists
+func addDriveFileToAllBiases(file *drive.File) {
+	newBiasChoice, err := makeBiasChoiceFromDriveFile(file)
+	if err != nil {
+		return
+	}
+
+	// if the bias already exists, then just add this picture to the image array for the idol
+	for _, currentBias := range allBiasChoices {
+		if currentBias.fileName == newBiasChoice.fileName {
+			currentBias.biasImages = append(currentBias.biasImages, newBiasChoice.biasImages[0])
+			return
+		}
+	}
+
+	allBiasChoices = append(allBiasChoices, newBiasChoice)
 }
 
 // listIdolsInGame will list all idols that can show up in the biasgame
@@ -1046,11 +1067,20 @@ func compileGameWinnersLosers(biases []*biasChoice) []models.BiasEntry {
 	return biasEntries
 }
 
+// giveImageShadowBorder give the round image a shadow border
 func giveImageShadowBorder(img image.Image, offsetX int, offsetY int) image.Image {
-
 	rgba := image.NewRGBA(shadowBorder.Bounds())
 	draw.Draw(rgba, shadowBorder.Bounds(), shadowBorder, image.Point{0, 0}, draw.Src)
 	draw.Draw(rgba, img.Bounds().Add(image.Pt(offsetX, offsetY)), img, image.ZP, draw.Over)
-
 	return rgba.SubImage(rgba.Rect)
 }
+
+// getAllBiasChoices is thread safe read for allBiasChoices
+// func getAllBiasChoices() []*biasChoice {
+
+// }
+
+// // appendToAllBiasChoices is thread safe append for allBiasChoices
+// func appendToAllBiasChoices() []*biasChoice {
+
+// }

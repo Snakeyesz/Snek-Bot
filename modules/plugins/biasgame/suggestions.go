@@ -3,11 +3,12 @@ package biasgame
 import (
 	"fmt"
 	"image"
+	"strings"
+	"time"
 
 	"github.com/sethgrid/pester"
 	"google.golang.org/api/drive/v3"
-
-	"github.com/davecgh/go-spew/spew"
+	"google.golang.org/api/googleapi"
 
 	"github.com/Snakeyesz/snek-bot/models"
 
@@ -24,10 +25,14 @@ const (
 	X_EMOJI         = "❌"
 
 	MAX_IMAGE_SIZE = 2000 // 2000px x 2000px
+
+	GIRLS_FOLDER_ID = "1CIM6yrvZOKn_R-qWYJ6pISHyq-JQRkja"
+	BOYS_FOLDER_ID  = "1psrhQQaV0kwPhAMtJ7LYT2SWgLoyDb-J"
 )
 
 var suggestionQueue []*models.BiasGameSuggestion
 var suggestionEmbedMessageId string // id of the embed message suggestions are accepted/denied
+var genderFolderMap map[string]string
 
 func InitSuggestionChannel() {
 	// suggestionQueue = make(map[string]*idolSuggestion)
@@ -35,7 +40,6 @@ func InitSuggestionChannel() {
 	// when the bot starts, delete any past bot messages from the suggestion channel and make the embed
 	var messagesToDelete []string
 	messagesInChannel, _ := cache.GetDiscordSession().ChannelMessages(IMAGE_SUGGESTION_CHANNEL, 100, "", "", "")
-	// spew.Dump(messagesInChannel)
 	for _, msg := range messagesInChannel {
 		messagesToDelete = append(messagesToDelete, msg.ID)
 		// if msg.Author.ID == cache.GetDiscordSession().State.User.ID {
@@ -49,6 +53,11 @@ func InitSuggestionChannel() {
 
 	// create the first embed
 	updateCurrentSuggestionEmbed()
+
+	genderFolderMap = map[string]string{
+		"boy":  BOYS_FOLDER_ID,
+		"girl": GIRLS_FOLDER_ID,
+	}
 }
 
 // processImageSuggestion
@@ -71,7 +80,11 @@ func ProcessImageSuggestion(msg *discordgo.Message, msgContent string) {
 	if len(suggestionArgs) != 4 {
 		utils.SendMessage(msg.ChannelID, invalidArgsMessage)
 		return
-	} else if suggestionArgs[0] != "girl" && suggestionArgs[0] != "boy" {
+	}
+
+	// set gender to lowercase and check if its valid
+	suggestionArgs[0] = strings.ToLower(suggestionArgs[0])
+	if suggestionArgs[0] != "girl" && suggestionArgs[0] != "boy" {
 		utils.SendMessage(msg.ChannelID, invalidArgsMessage)
 		return
 	}
@@ -131,54 +144,66 @@ func ProcessImageSuggestion(msg *discordgo.Message, msgContent string) {
 }
 
 // CheckSuggestionReaction will check if the reaction was added to a suggestion message
-func CheckSuggestionReaction(reaction *discordgo.MessageReactionAdd) {
+func CheckSuggestionReaction(reaction *discordgo.MessageReactionAdd) *drive.File {
+	var acceptedFile *drive.File
+	var userResponseMessage string
+
+	// check if the reaction added was valid
 	if CHECKMARK_EMOJI != reaction.Emoji.Name && X_EMOJI != reaction.Emoji.Name {
-		return
+		return nil
 	}
 
+	// check if the reaction was added to the suggestion embed message
 	if reaction.MessageID == suggestionEmbedMessageId {
 		cs := suggestionQueue[0]
 
-		dmChannel, err := cache.GetDiscordSession().UserChannelCreate(cs.UserID)
-		if err != nil {
-			return
-		}
-
 		// update current page based on direction
 		if CHECKMARK_EMOJI == reaction.Emoji.Name {
-			utils.SendMessage(dmChannel.ID, fmt.Sprintf("Your idol suggestion for `%s %s` has been APPROVED! Thank you again for the suggestion.", cs.GrouopName, cs.Name))
 
+			// make call to get suggestion image
 			res, err := pester.Get(cs.ImageURL)
-
-			var folderId string
-			if cs.Gender == "boy" {
-				folderId = "1psrhQQaV0kwPhAMtJ7LYT2SWgLoyDb-J"
-			} else {
-				folderId = "1CIM6yrvZOKn_R-qWYJ6pISHyq-JQRkja"
-			}
-
-			file_meta := &drive.File{Name: fmt.Sprintf("%s_%s", cs.GrouopName, cs.Name), Parents: []string{folderId}}
-			_, err = cache.GetGoogleDriveService().Files.Create(file_meta).Media(res.Body).Do()
-
 			if err != nil {
-				fmt.Println("error uploading to google: ", err.Error())
+				msg, _ := utils.SendMessage(IMAGE_SUGGESTION_CHANNEL, "biasgame.suggestion.could-not-decode")
+				go utils.DeleteImageWithDelay(msg, time.Second*15)
+				return nil
 			}
+
+			// upload image to google drive
+			file_meta := &drive.File{Name: fmt.Sprintf("%s_%s.png", cs.GrouopName, cs.Name), Parents: []string{genderFolderMap[cs.Gender]}}
+			acceptedFile, err = cache.GetGoogleDriveService().Files.Create(file_meta).Media(res.Body).Fields(googleapi.Field("name, id, parents, webViewLink, webContentLink")).Do()
+			if err != nil {
+				fmt.Println("error: ", err.Error())
+				msg, _ := utils.SendMessage(IMAGE_SUGGESTION_CHANNEL, "biasgame.suggestion.drive-upload-failed")
+				go utils.DeleteImageWithDelay(msg, time.Second*15)
+				return nil
+			}
+
+			// set image accepted image
+			userResponseMessage = fmt.Sprintf("Your idol suggestion for `%s %s` has been APPROVED! Thank you again for the suggestion.", cs.GrouopName, cs.Name)
+
+		} else if X_EMOJI == reaction.Emoji.Name {
+
+			// image was denied
+			userResponseMessage = fmt.Sprintf("Unfortunatly idol suggestion for `%s %s` has been denied.", cs.GrouopName, cs.Name)
 		}
 
-		if X_EMOJI == reaction.Emoji.Name {
-			utils.SendMessage(dmChannel.ID, fmt.Sprintf("Unfortunatly idol suggestion for `%s %s` has been denied.", cs.GrouopName, cs.Name))
+		dmChannel, err := cache.GetDiscordSession().UserChannelCreate(cs.UserID)
+		utils.SendMessage(dmChannel.ID, userResponseMessage)
+		if err != nil {
+			return nil
 		}
 
 		// delete first suggestion and process queue again
 		suggestionQueue = suggestionQueue[1:]
-		updateCurrentSuggestionEmbed()
+		go updateCurrentSuggestionEmbed()
 	}
+
+	return acceptedFile
 }
 
 func updateCurrentSuggestionEmbed() {
 	var embed *discordgo.MessageEmbed
 
-	spew.Dump(suggestionQueue)
 	if len(suggestionQueue) == 0 {
 
 		embed = &discordgo.MessageEmbed{
