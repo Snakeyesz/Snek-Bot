@@ -156,6 +156,9 @@ func (b *BiasGame) InitPlugin() {
 	draw.Draw(bracketImage, winnerBracket.Bounds(), winnerBracket, image.Point{0, 0}, draw.Src)
 	draw.Draw(bracketImage, crown.Bounds().Add(image.Pt(230, 5)), crown, image.ZP, draw.Over)
 	winnerBracket = bracketImage.SubImage(bracketImage.Rect)
+
+	// set up suggestions channel
+	biasgame.InitSuggestionChannel()
 }
 
 // Will validate if the pass command entered is used for this plugin
@@ -550,14 +553,13 @@ func refreshBiasChoices() {
 
 		fmt.Println("Loading Files:", len(allFiles))
 		for _, file := range allFiles {
+			if !strings.HasPrefix(file.Name, "P") && !strings.HasPrefix(file.Name, "T") {
+				continue
+			}
 			wg.Add(1)
 
 			go func(file *drive.File) {
 				defer wg.Done()
-
-				// if !strings.HasPrefix(file.Name, "P") && !strings.HasPrefix(file.Name, "T") && !strings.HasPrefix(file.Name, "S") {
-				// 	return
-				// }
 
 				res, err := pester.Get(file.WebContentLink)
 				if err != nil {
