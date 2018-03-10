@@ -290,13 +290,15 @@ func updateCurrentSuggestionEmbed() {
 		// current suggestion
 		cs := suggestionQueue[0]
 
+		// get info of user who suggested image
 		suggestedBy, err := cache.GetDiscordSession().User(cs.UserID)
 
+		// get guild and channel info it was suggested from
 		suggestedFromText := "No Guild Info"
 		suggestedFromCh, err := cache.GetDiscordSession().Channel(cs.ChannelID)
 		suggestedFrom, err := cache.GetDiscordSession().Guild(suggestedFromCh.GuildID)
 		if err == nil {
-			suggestedFromText = fmt.Sprintf("%s", suggestedFrom.Name)
+			suggestedFromText = fmt.Sprintf("%s | #%s", suggestedFrom.Name, suggestedFromCh.Name)
 		}
 
 		// if the group name and idol name were matched show a checkmark, otherwise show a question mark
