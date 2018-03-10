@@ -384,22 +384,22 @@ func (g *singleBiasGame) sendWinnerMessage() {
 	bracketImageOffsets := map[int]image.Point{
 		14: image.Pt(182, 53),
 
-		13: image.Pt(81, 271),
-		12: image.Pt(358, 271),
+		13: image.Pt(358, 271),
+		12: image.Pt(81, 271),
 
-		11: image.Pt(29, 409),
-		10: image.Pt(167, 409),
-		9:  image.Pt(305, 409),
-		8:  image.Pt(443, 409),
+		11: image.Pt(443, 409),
+		10: image.Pt(305, 409),
+		9:  image.Pt(167, 409),
+		8:  image.Pt(29, 409),
 
-		7: image.Pt(5, 517),
-		6: image.Pt(64, 517),
-		5: image.Pt(143, 517),
-		4: image.Pt(202, 517),
-		3: image.Pt(281, 517),
-		2: image.Pt(340, 517),
-		1: image.Pt(419, 517),
-		0: image.Pt(478, 517),
+		7: image.Pt(478, 517),
+		6: image.Pt(419, 517),
+		5: image.Pt(340, 517),
+		4: image.Pt(281, 517),
+		3: image.Pt(202, 517),
+		2: image.Pt(143, 517),
+		1: image.Pt(64, 517),
+		0: image.Pt(5, 517),
 	}
 
 	// get last 7 from winners array and combine with topEight array
