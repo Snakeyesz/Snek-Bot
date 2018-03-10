@@ -21,12 +21,10 @@ func InitDiscordBot() {
 	// init discord
 	discord, err := discordgo.New("Bot " + cache.GetAppConfig().Path("discord_bot.token").Data().(string))
 	utils.PanicCheck(err)
-
-	// Init plugins and add all event handlers
-	modules.InitPlugins()
-	addEventHandlers(discord)
-
 	cache.SetDiscordSession(discord)
+
+	// add event handlers
+	addEventHandlers(discord)
 }
 
 // Adds event handlers to discord bot

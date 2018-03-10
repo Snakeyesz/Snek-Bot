@@ -8,13 +8,14 @@ import (
 
 	"github.com/Snakeyesz/snek-bot/cache"
 	"github.com/Snakeyesz/snek-bot/components"
+	"github.com/Snakeyesz/snek-bot/modules"
 	"github.com/Snakeyesz/snek-bot/utils"
 )
 
 // Bot Entry Point
 func main() {
 
-	// Initialize and loadcomponents
+	// Initialize and load components
 	components.LoadAppConfig()
 	components.Loadi18nTranslations()
 	components.InitGoogleDrive()
@@ -25,6 +26,9 @@ func main() {
 	discord := cache.GetDiscordSession()
 	err := discord.Open()
 	utils.PanicCheck(err)
+
+	// init plugins after bot is started
+	modules.InitPlugins()
 
 	// Run bot until connection is closed or interupted
 	fmt.Println("Bot is now running.  Press CTRL-C to exit.")
