@@ -193,6 +193,6 @@ func DeleteImageWithDelay(msg *discordgo.Message, delay time.Duration) {
 		return
 	}
 
-	time.Sleep(time.Second * 15)
+	time.Sleep(delay)
 	cache.GetDiscordSession().ChannelMessageDelete(msg.ChannelID, msg.ID)
 }

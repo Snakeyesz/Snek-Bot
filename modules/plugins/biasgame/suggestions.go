@@ -367,12 +367,16 @@ func updateCurrentSuggestionEmbed() {
 		embedMsg, _ = utils.EditEmbed(IMAGE_SUGGESTION_CHANNEL, suggestionEmbedMessageId, embed)
 	}
 
-	// delete any reactions on message and then reset them if needed
+	// delete any reactions on message and then reset them if there's another suggestion in queue
 	cache.GetDiscordSession().MessageReactionsRemoveAll(IMAGE_SUGGESTION_CHANNEL, embedMsg.ID)
 	if len(suggestionQueue) > 0 {
 		cache.GetDiscordSession().MessageReactionAdd(IMAGE_SUGGESTION_CHANNEL, embedMsg.ID, CHECKMARK_EMOJI)
 		cache.GetDiscordSession().MessageReactionAdd(IMAGE_SUGGESTION_CHANNEL, embedMsg.ID, X_EMOJI)
 	}
+
+	// make a message and delete it immediatly. just to show that a new suggestion has come in
+	msg, _ := utils.SendMessage(IMAGE_SUGGESTION_CHANNEL, "New Suggestion Ping")
+	go utils.DeleteImageWithDelay(msg, time.Second*2)
 }
 
 // loadUnresolvedSuggestions
@@ -389,7 +393,4 @@ func loadUnresolvedSuggestions() {
 	}
 
 	results.All(&suggestionQueue)
-	// items := results.Iter()
-	// game := models.SingleBiasGameEntry{}
-	// for items.Next(&game) {
 }
