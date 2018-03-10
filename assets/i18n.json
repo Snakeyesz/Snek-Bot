@@ -22,14 +22,17 @@
 		},
 		"game": {
 			"invalid-game-size": "Sorry, that game size is not valid. Valid sizes are: 32, 64, 128, or 256",
-			"not-enough-idols": "There are not enough idols for a game of that size"
+			"not-enough-idols": "There are not enough idols for a game of that size",
+			"game-not-ready": "Game is still loading after a bot restart. Please check again in a minute."
 		},
 		"suggestion": {
 			"image-not-square": "The suggested image must be a perfect square. Please crop the image and try again.",
 			"invalid-url": "Could not retrieve image from the given url.",
 			"thanks-for-suggestion": "Thank you for your suggestion! It has been recorded and will be reviewed. If your permission allow, you will be notified when your suggestion is reviewed.",
 			"not-png-format": "Images must be in png format.",
-			"image-to-big": "Images must be less than 2000px by 2000px."
+			"image-to-big": "Images must be less than 2000px by 2000px.",
+			"drive-upload-failed": "Upload to google drive failed. Suggestion not accepted and user was not notified. Please try again.",
+			"could-not-decode": "Unable to decode iamge. Suggestion not accepted and user was not notified. Please try again."
 		},
 		"current": {
 			"no-running-game": "No currently running game found.",
