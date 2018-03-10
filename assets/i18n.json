@@ -29,10 +29,11 @@
 			"image-not-square": "The suggested image must be a perfect square. Please crop the image and try again.",
 			"invalid-url": "Could not retrieve image from the given url.",
 			"thanks-for-suggestion": "Thank you for your suggestion! It has been recorded and will be reviewed. If your permission allow, you will be notified when your suggestion is reviewed.",
-			"not-png-format": "Images must be in png format.",
+			"not-png-or-jpeg": "Images must be in png or jpg format.",
 			"image-to-big": "Images must be less than 2000px by 2000px.",
 			"drive-upload-failed": "Upload to google drive failed. Suggestion not accepted and user was not notified. Please try again.",
-			"could-not-decode": "Unable to decode iamge. Suggestion not accepted and user was not notified. Please try again."
+			"could-not-decode": "Unable to decode iamge. Suggestion not accepted and user was not notified. Please try again.",
+			"invalid-group-or-idol": "The group and idol names must not contain any double quotes or underscores. Please try again."
 		},
 		"current": {
 			"no-running-game": "No currently running game found.",

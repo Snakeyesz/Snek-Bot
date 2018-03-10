@@ -38,6 +38,21 @@ func MongoDBInsert(collection models.MongoDbCollection, rawData interface{}) (re
 	return bson.ObjectId(newID), nil
 }
 
+// MongoDBInsert is a generic update function that will update the given data based on the object id passed
+func MongoDBUpdate(collection models.MongoDbCollection, recordId bson.ObjectId, data interface{}) (bson.ObjectId, error) {
+	if !recordId.Valid() {
+		return bson.ObjectId(""), errors.New("invalid id")
+	}
+
+	// update record
+	err := cache.GetMongoDB().C(collection.String()).UpdateId(recordId, data)
+	if err != nil {
+		return bson.ObjectId(""), err
+	}
+
+	return recordId, nil
+}
+
 // MongoDBSearch generic search function for
 func MongoDBSearch(collection models.MongoDbCollection, selection interface{}) (query *mgo.Query) {
 	return cache.GetMongoDB().C(collection.String()).Find(selection)

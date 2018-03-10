@@ -25,7 +25,7 @@ type SingleBiasGameEntry struct {
 	Gender       string // girl, boy, mixed
 }
 
-type BiasGameSuggestion struct {
+type BiasGameSuggestionEntry struct {
 	ID         bson.ObjectId `bson:"_id,omitempty"`
 	UserID     string        // user who made the message
 	Name       string
@@ -33,4 +33,7 @@ type BiasGameSuggestion struct {
 	Gender     string
 	ImageURL   string
 	ChannelID  string // channel suggestion was made in
+	Status     string
+	GroupMatch bool
+	IdolMatch  bool
 }

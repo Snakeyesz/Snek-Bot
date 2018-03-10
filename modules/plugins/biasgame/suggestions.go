@@ -1,11 +1,15 @@
 package biasgame
 
 import (
+	"bytes"
 	"fmt"
 	"image"
+	"image/png"
+	"regexp"
 	"strings"
 	"time"
 
+	"github.com/globalsign/mgo/bson"
 	"github.com/sethgrid/pester"
 	"google.golang.org/api/drive/v3"
 	"google.golang.org/api/googleapi"
@@ -21,8 +25,9 @@ import (
 const (
 	IMAGE_SUGGESTION_CHANNEL = "420049316615553026"
 
-	CHECKMARK_EMOJI = "✅"
-	X_EMOJI         = "❌"
+	CHECKMARK_EMOJI    = "✅"
+	X_EMOJI            = "❌"
+	QUESTIONMARK_EMOJI = "❓"
 
 	MAX_IMAGE_SIZE = 2000 // 2000px x 2000px
 
@@ -30,12 +35,11 @@ const (
 	BOYS_FOLDER_ID  = "1psrhQQaV0kwPhAMtJ7LYT2SWgLoyDb-J"
 )
 
-var suggestionQueue []*models.BiasGameSuggestion
-var suggestionEmbedMessageId string // id of the embed message suggestions are accepted/denied
+var suggestionQueue []*models.BiasGameSuggestionEntry
+var suggestionEmbedMessageId string // id of the embed message where suggestions are accepted/denied
 var genderFolderMap map[string]string
 
 func InitSuggestionChannel() {
-	// suggestionQueue = make(map[string]*idolSuggestion)
 
 	// when the bot starts, delete any past bot messages from the suggestion channel and make the embed
 	var messagesToDelete []string
@@ -51,7 +55,8 @@ func InitSuggestionChannel() {
 		fmt.Println("Error deleting messages: ", err.Error())
 	}
 
-	// create the first embed
+	// load unresolved suggestions and create the first embed
+	loadUnresolvedSuggestions()
 	updateCurrentSuggestionEmbed()
 
 	genderFolderMap = map[string]string{
@@ -61,7 +66,7 @@ func InitSuggestionChannel() {
 }
 
 // processImageSuggestion
-func ProcessImageSuggestion(msg *discordgo.Message, msgContent string) {
+func ProcessImageSuggestion(msg *discordgo.Message, msgContent string, groupIdolMap map[string][]string) {
 	invalidArgsMessage := "Invalid suggestion arguments. \n\n" +
 		"Suggestion must be done with the following format:\n```!biasgame suggest [boy/girl] \"group name\" \"idol name\" [url to image]```\n" +
 		"For Example:\n```!biasgame suggest girl \"PRISTIN\" \"Nayoung\" https://cdn.discordapp.com/attachments/420049316615553026/420056295618510849/unknown.png```\n\n"
@@ -98,9 +103,9 @@ func ProcessImageSuggestion(msg *discordgo.Message, msgContent string) {
 	defer resp.Body.Close()
 	fmt.Println("content type: ", resp.Header.Get("Content-type"))
 
-	// make sure image is png
-	if resp.Header.Get("Content-type") != "image/png" {
-		utils.SendMessage(msg.ChannelID, "biasgame.suggestion.not-png-format")
+	// make sure image is png or jpeg
+	if resp.Header.Get("Content-type") != "image/png" && resp.Header.Get("Content-type") != "image/jpeg" {
+		utils.SendMessage(msg.ChannelID, "biasgame.suggestion.not-png-or-jpeg")
 		return
 	}
 
@@ -124,17 +129,54 @@ func ProcessImageSuggestion(msg *discordgo.Message, msgContent string) {
 		return
 	}
 
+	// validate group and idol name have no double quotes or underscores
+	if strings.ContainsAny(suggestionArgs[1]+suggestionArgs[2], "\"_") {
+		utils.SendMessage(msg.ChannelID, "biasgame.suggestion.invalid-group-or-idol")
+		return
+	}
+
+	// check if the group suggested matches a current group. do loose comparison
+	groupMatch := false
+	idolMatch := false
+	reg, _ := regexp.Compile("[^a-zA-Z0-9]+")
+	for k, v := range groupIdolMap {
+		curGroup := strings.ToLower(reg.ReplaceAllString(k, ""))
+		sugGroup := strings.ToLower(reg.ReplaceAllString(suggestionArgs[1], ""))
+		fmt.Println("groups: ", curGroup, sugGroup)
+
+		// if groups match, set the suggested group to the current group
+		if curGroup == sugGroup {
+			groupMatch = true
+			suggestionArgs[1] = k
+
+			// check if the idols name matches
+			for _, idolName := range v {
+				curName := strings.ToLower(reg.ReplaceAllString(idolName, ""))
+				sugName := strings.ToLower(reg.ReplaceAllString(suggestionArgs[2], ""))
+
+				if curName == sugName {
+					idolMatch = true
+					suggestionArgs[2] = idolName
+					break
+				}
+			}
+			break
+		}
+	}
+
 	// send ty message
 	utils.SendMessage(msg.ChannelID, "biasgame.suggestion.thanks-for-suggestion")
 
 	// create suggetion
-	suggestion := &models.BiasGameSuggestion{
+	suggestion := &models.BiasGameSuggestionEntry{
 		UserID:     msg.Author.ID,
 		ChannelID:  msg.ChannelID,
 		Gender:     suggestionArgs[0],
 		GrouopName: suggestionArgs[1],
 		Name:       suggestionArgs[2],
 		ImageURL:   suggestionArgs[3],
+		GroupMatch: groupMatch,
+		IdolMatch:  idolMatch,
 	}
 
 	// save suggetion to database and memory
@@ -145,7 +187,7 @@ func ProcessImageSuggestion(msg *discordgo.Message, msgContent string) {
 
 // CheckSuggestionReaction will check if the reaction was added to a suggestion message
 func CheckSuggestionReaction(reaction *discordgo.MessageReactionAdd) *drive.File {
-	var acceptedFile *drive.File
+	var approvedFiles *drive.File
 	var userResponseMessage string
 
 	// check if the reaction added was valid
@@ -168,9 +210,22 @@ func CheckSuggestionReaction(reaction *discordgo.MessageReactionAdd) *drive.File
 				return nil
 			}
 
+			approvedImage, err := utils.DecodeImage(res.Body)
+			if err != nil {
+				msg, _ := utils.SendMessage(IMAGE_SUGGESTION_CHANNEL, "biasgame.suggestion.could-not-decode")
+				go utils.DeleteImageWithDelay(msg, time.Second*15)
+				return nil
+			}
+
+			buf := new(bytes.Buffer)
+			encoder := new(png.Encoder)
+			encoder.CompressionLevel = -2 // -2 compression is best speed
+			encoder.Encode(buf, approvedImage)
+			myReader := bytes.NewReader(buf.Bytes())
+
 			// upload image to google drive
 			file_meta := &drive.File{Name: fmt.Sprintf("%s_%s.png", cs.GrouopName, cs.Name), Parents: []string{genderFolderMap[cs.Gender]}}
-			acceptedFile, err = cache.GetGoogleDriveService().Files.Create(file_meta).Media(res.Body).Fields(googleapi.Field("name, id, parents, webViewLink, webContentLink")).Do()
+			approvedFiles, err = cache.GetGoogleDriveService().Files.Create(file_meta).Media(myReader).Fields(googleapi.Field("name, id, parents, webViewLink, webContentLink")).Do()
 			if err != nil {
 				fmt.Println("error: ", err.Error())
 				msg, _ := utils.SendMessage(IMAGE_SUGGESTION_CHANNEL, "biasgame.suggestion.drive-upload-failed")
@@ -179,12 +234,20 @@ func CheckSuggestionReaction(reaction *discordgo.MessageReactionAdd) *drive.File
 			}
 
 			// set image accepted image
-			userResponseMessage = fmt.Sprintf("Your idol suggestion for `%s %s` has been APPROVED! Thank you again for the suggestion.", cs.GrouopName, cs.Name)
+			userResponseMessage = fmt.Sprintf("Your image suggestion for `%s %s` has been APPROVED! Thank you again for the suggestion.", cs.GrouopName, cs.Name)
+
+			// update record
+			cs.Status = "approved"
+			utils.MongoDBUpdate(models.BiasGameSuggestionsTable, cs.ID, cs)
 
 		} else if X_EMOJI == reaction.Emoji.Name {
 
 			// image was denied
 			userResponseMessage = fmt.Sprintf("Unfortunatly idol suggestion for `%s %s` has been denied.", cs.GrouopName, cs.Name)
+
+			// update record
+			cs.Status = "denied"
+			utils.MongoDBUpdate(models.BiasGameSuggestionsTable, cs.ID, cs)
 		}
 
 		dmChannel, err := cache.GetDiscordSession().UserChannelCreate(cs.UserID)
@@ -198,7 +261,7 @@ func CheckSuggestionReaction(reaction *discordgo.MessageReactionAdd) *drive.File
 		go updateCurrentSuggestionEmbed()
 	}
 
-	return acceptedFile
+	return approvedFiles
 }
 
 func updateCurrentSuggestionEmbed() {
@@ -212,6 +275,7 @@ func updateCurrentSuggestionEmbed() {
 				Name: "No suggestions in queue",
 			},
 		}
+
 	} else {
 		// current suggestion
 		cs := suggestionQueue[0]
@@ -225,25 +289,36 @@ func updateCurrentSuggestionEmbed() {
 			suggestedFromText = fmt.Sprintf("%s", suggestedFrom.Name)
 		}
 
-		// res, err := pester.Get(cs.ImageURL)
-		// if err != nil {
-		// 	// todo: discard submission
-		// 	return nil
-		// }
+		// if the group name and idol name were matched show a checkmark, otherwise show a question mark
+		groupNameDisplay := "Group Name"
+		if cs.GroupMatch == true {
+			groupNameDisplay += " " + CHECKMARK_EMOJI
+		} else {
+			groupNameDisplay += " " + QUESTIONMARK_EMOJI
+		}
+		idolNameDisplay := "Idol Name"
+		if cs.IdolMatch == true {
+			idolNameDisplay += " " + CHECKMARK_EMOJI
+		} else {
+			idolNameDisplay += " " + QUESTIONMARK_EMOJI
+		}
 
 		embed = &discordgo.MessageEmbed{
 			Color: 0x0FADED, // blueish
 			Author: &discordgo.MessageEmbedAuthor{
 				Name: fmt.Sprintf("Suggestions in queue: %d", len(suggestionQueue)),
 			},
+			Image: &discordgo.MessageEmbedImage{
+				URL: cs.ImageURL,
+			},
 			Fields: []*discordgo.MessageEmbedField{
 				{
-					Name:   "Idol Name",
+					Name:   idolNameDisplay,
 					Value:  cs.Name,
 					Inline: true,
 				},
 				{
-					Name:   "Idol Group",
+					Name:   groupNameDisplay,
 					Value:  cs.GrouopName,
 					Inline: true,
 				},
@@ -267,11 +342,6 @@ func updateCurrentSuggestionEmbed() {
 					Value:  cs.ID.Time().Format("Jan 2, 2006 3:04pm (MST)"),
 					Inline: true,
 				},
-				{
-					Name:   "Image URL",
-					Value:  cs.ImageURL,
-					Inline: true,
-				},
 			},
 		}
 	}
@@ -293,26 +363,21 @@ func updateCurrentSuggestionEmbed() {
 	}
 }
 
-// recordImageSuggestion records suggestion to the dedicated channel
-// func (s *models.BiasGameSuggestion) updateSuggestionEmbed() {
+// loadUnresolvedSuggestions
+func loadUnresolvedSuggestions() {
+	queryParams := bson.M{}
 
-// 	channel, _ := cache.GetDiscordSession().State.Channel(msg.ChannelID)
-// 	guild, _ := utils.GetGuildFromMessage(msg)
+	queryParams["status"] = ""
 
-// 	// validation passed, put suggestion in suggestion channel
-// 	suggestionMessage := fmt.Sprintf("Idol Suggestion for Bias Game\n\nFrom Server: %s | %s\nFrom Channel: %s | %s\nFrom User: %s\nIdol Gender: %s\nIdol Group: %s\nIdol Name: %s\nImage URL: <%s>",
-// 		guild.Name,
-// 		guild.ID,
-// 		channel.Name,
-// 		channel.ID,
-// 		msg.Author.Username,
-// 		suggestionArgs[0],
-// 		suggestionArgs[1],
-// 		suggestionArgs[2],
-// 		suggestionArgs[3])
+	results := utils.MongoDBSearch(models.BiasGameSuggestionsTable, queryParams)
 
-// 	message, _ := utils.SendMessage(IMAGE_SUGGESTION_CHANNEL, suggestionMessage)
+	resultCount, err := results.Count()
+	if err != nil || resultCount == 0 {
+		return
+	}
 
-// 	cache.GetDiscordSession().MessageReactionAdd(message.ChannelID, message.ID, THUMB_UP_EMOJI)
-// 	cache.GetDiscordSession().MessageReactionAdd(message.ChannelID, message.ID, THUMB_DOWN_EMOJI)
-// }
+	results.All(&suggestionQueue)
+	// items := results.Iter()
+	// game := models.SingleBiasGameEntry{}
+	// for items.Next(&game) {
+}

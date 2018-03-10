@@ -199,7 +199,14 @@ func (b *BiasGame) Action(command string, content string, msg *discordgo.Message
 		displayBiasGameStats(msg, content)
 
 	} else if commandArgs[0] == "suggest" {
-		biasgame.ProcessImageSuggestion(msg, content)
+
+		// create map of idols and there group
+		groupIdolMap := make(map[string][]string)
+		for _, bias := range allBiasChoices {
+			groupIdolMap[bias.groupName] = append(groupIdolMap[bias.groupName], bias.biasName)
+		}
+
+		biasgame.ProcessImageSuggestion(msg, content, groupIdolMap)
 
 	} else if commandArgs[0] == "current" {
 
@@ -570,9 +577,9 @@ func refreshBiasChoices() {
 
 		fmt.Println("Loading Files:", len(allFiles))
 		for _, file := range allFiles {
-			// if !strings.HasPrefix(file.Name, "P") && !strings.HasPrefix(file.Name, "T") {
-			// 	continue
-			// }
+			if !strings.HasPrefix(file.Name, "P") && !strings.HasPrefix(file.Name, "T") {
+				continue
+			}
 			wg.Add(1)
 
 			go func(file *drive.File) {
@@ -1074,13 +1081,3 @@ func giveImageShadowBorder(img image.Image, offsetX int, offsetY int) image.Imag
 	draw.Draw(rgba, img.Bounds().Add(image.Pt(offsetX, offsetY)), img, image.ZP, draw.Over)
 	return rgba.SubImage(rgba.Rect)
 }
-
-// getAllBiasChoices is thread safe read for allBiasChoices
-// func getAllBiasChoices() []*biasChoice {
-
-// }
-
-// // appendToAllBiasChoices is thread safe append for allBiasChoices
-// func appendToAllBiasChoices() []*biasChoice {
-
-// }
