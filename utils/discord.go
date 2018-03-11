@@ -2,6 +2,7 @@ package utils
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"time"
 
@@ -65,6 +66,22 @@ func SendMessage(channelID string, message string) (*discordgo.Message, error) {
 
 	// output translation to user
 	sentMsg, err := cache.GetDiscordSession().ChannelMessageSend(channelID, message)
+	return sentMsg, err
+}
+
+// SendMessagef is like SendMessage but with Sprintf formatting
+func SendMessagef(channelID string, message string, msgArgs ...interface{}) (*discordgo.Message, error) {
+	translations := cache.Geti18nTranslations()
+
+	cache.GetDiscordSession().ChannelTyping(channelID)
+
+	// check if the error code has a user translation
+	if translations.ExistsP(message) {
+		message = translations.Path(message).Data().(string)
+	}
+
+	// output translation to user
+	sentMsg, err := cache.GetDiscordSession().ChannelMessageSend(channelID, fmt.Sprintf(message, msgArgs...))
 	return sentMsg, err
 }
 
