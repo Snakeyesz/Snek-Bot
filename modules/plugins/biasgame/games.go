@@ -81,7 +81,7 @@ const (
 	ARROW_BACKWARD_EMOJI    = "◀"
 	ZERO_WIDTH_SPACE        = "\u200B"
 	BOT_OWNER_ID            = "273639623324991489"
-	MULTIPLAYER_ROUND_DELAY = 1
+	MULTIPLAYER_ROUND_DELAY = 5
 )
 
 // used to stop commands from going through
@@ -594,7 +594,7 @@ func startMultiPlayerGame(msg *discordgo.Message, commandArgs []string) {
 	}
 
 	// confirm we have enough biases for a multiplayer game
-	if len(biasChoices) < 16 {
+	if len(biasChoices) < 32 {
 		utils.SendMessage(msg.ChannelID, "biasgame.game.not-enough-idols")
 		return
 	}
@@ -602,7 +602,7 @@ func startMultiPlayerGame(msg *discordgo.Message, commandArgs []string) {
 	// create new game
 	multiGame := &multiBiasGame{
 		channelID:      msg.ChannelID,
-		idolsRemaining: 16,
+		idolsRemaining: 32,
 		gender:         gameGender,
 	}
 	multiGame.gameImageIndex = make(map[string]int)
