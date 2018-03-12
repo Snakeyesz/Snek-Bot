@@ -1,6 +1,8 @@
 package models
 
 import (
+	"time"
+
 	"github.com/globalsign/mgo/bson"
 )
 
@@ -15,7 +17,7 @@ type BiasEntry struct {
 	Gender    string
 }
 
-type SingleBiasGameEntry struct {
+type BiasGameEntry struct {
 	ID           bson.ObjectId `bson:"_id,omitempty"`
 	UserID       string
 	GuildID      string
@@ -23,17 +25,21 @@ type SingleBiasGameEntry struct {
 	RoundWinners []BiasEntry
 	RoundLosers  []BiasEntry
 	Gender       string // girl, boy, mixed
+	GameType     string // single, multi
 }
 
 type BiasGameSuggestionEntry struct {
-	ID         bson.ObjectId `bson:"_id,omitempty"`
-	UserID     string        // user who made the message
-	Name       string
-	GrouopName string
-	Gender     string
-	ImageURL   string
-	ChannelID  string // channel suggestion was made in
-	Status     string
-	GroupMatch bool
-	IdolMatch  bool
+	ID                bson.ObjectId `bson:"_id,omitempty"`
+	UserID            string        // user who made the message
+	ProcessedByUserId string
+	Name              string
+	GrouopName        string
+	Gender            string
+	ImageURL          string
+	ChannelID         string // channel suggestion was made in
+	Status            string
+	Notes             string // misc notes from
+	GroupMatch        bool
+	IdolMatch         bool
+	LastModifiedOn    time.Time
 }

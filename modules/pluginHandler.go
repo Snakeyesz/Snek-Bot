@@ -8,6 +8,8 @@ package modules
 import (
 	"strings"
 
+	"github.com/Snakeyesz/snek-bot/modules/plugins/biasgame"
+
 	"github.com/Snakeyesz/snek-bot/cache"
 	"github.com/Snakeyesz/snek-bot/modules/plugins"
 	"github.com/bwmarrin/discordgo"
@@ -42,7 +44,7 @@ func InitPlugins() {
 		&plugins.Cat{},
 		&plugins.Pong{},
 		&plugins.Music{},
-		&plugins.BiasGame{},
+		&biasgame.BiasGame{},
 	}
 
 	for _, plugin := range pluginList {

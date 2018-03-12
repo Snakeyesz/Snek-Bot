@@ -29,31 +29,31 @@ const (
 	X_EMOJI            = "❌"
 	QUESTIONMARK_EMOJI = "❓"
 
-	MAX_IMAGE_SIZE = 2000 // 2000px x 2000px
-
-	GIRLS_FOLDER_ID = "1CIM6yrvZOKn_R-qWYJ6pISHyq-JQRkja"
-	BOYS_FOLDER_ID  = "1psrhQQaV0kwPhAMtJ7LYT2SWgLoyDb-J"
+	MAX_IMAGE_SIZE = 2000 // 2000x2000px
+	MIN_IMAGE_SIZE = 150  // 150x150px
 )
 
 var suggestionQueue []*models.BiasGameSuggestionEntry
 var suggestionEmbedMessageId string // id of the embed message where suggestions are accepted/denied
 var genderFolderMap map[string]string
 
-func InitSuggestionChannel() {
+func initSuggestionChannel() {
 
 	// when the bot starts, delete any past bot messages from the suggestion channel and make the embed
 	var messagesToDelete []string
 	messagesInChannel, _ := cache.GetDiscordSession().ChannelMessages(IMAGE_SUGGESTION_CHANNEL, 100, "", "", "")
 	for _, msg := range messagesInChannel {
 		messagesToDelete = append(messagesToDelete, msg.ID)
-		// if msg.Author.ID == cache.GetDiscordSession().State.User.ID {
-		// }
 	}
 
 	err := cache.GetDiscordSession().ChannelMessagesBulkDelete(IMAGE_SUGGESTION_CHANNEL, messagesToDelete)
 	if err != nil {
 		fmt.Println("Error deleting messages: ", err.Error())
 	}
+
+	// make a message on how to edit suggestions
+	helpMessage := "```Editable Fields: name, group, gender, notes\nCommand: !edit {field} new field value...\n\nPlease add a note when denying suggestions.```"
+	utils.SendMessage(IMAGE_SUGGESTION_CHANNEL, helpMessage)
 
 	// load unresolved suggestions and create the first embed
 	loadUnresolvedSuggestions()
@@ -111,7 +111,6 @@ func ProcessImageSuggestion(msg *discordgo.Message, msgContent string, groupIdol
 		return
 	}
 	defer resp.Body.Close()
-	fmt.Println("content type: ", resp.Header.Get("Content-type"))
 
 	// make sure image is png or jpeg
 	if resp.Header.Get("Content-type") != "image/png" && resp.Header.Get("Content-type") != "image/jpeg" {
@@ -134,8 +133,8 @@ func ProcessImageSuggestion(msg *discordgo.Message, msgContent string, groupIdol
 	}
 
 	// Validate size of image
-	if suggestedImage.Bounds().Dy() > MAX_IMAGE_SIZE {
-		utils.SendMessage(msg.ChannelID, "biasgame.suggestion.image-to-big")
+	if suggestedImage.Bounds().Dy() > MAX_IMAGE_SIZE || suggestedImage.Bounds().Dy() < MIN_IMAGE_SIZE {
+		utils.SendMessage(msg.ChannelID, "biasgame.suggestion.invalid-image-size")
 		return
 	}
 
@@ -152,7 +151,6 @@ func ProcessImageSuggestion(msg *discordgo.Message, msgContent string, groupIdol
 	for k, v := range groupIdolMap {
 		curGroup := strings.ToLower(reg.ReplaceAllString(k, ""))
 		sugGroup := strings.ToLower(reg.ReplaceAllString(suggestionArgs[1], ""))
-		fmt.Println("groups: ", curGroup, sugGroup)
 
 		// if groups match, set the suggested group to the current group
 		if curGroup == sugGroup {
@@ -175,7 +173,8 @@ func ProcessImageSuggestion(msg *discordgo.Message, msgContent string, groupIdol
 	}
 
 	// send ty message
-	utils.SendMessage(msg.ChannelID, "biasgame.suggestion.thanks-for-suggestion")
+	fmt.Println(msg.Author.Mention())
+	utils.SendMessagef(msg.ChannelID, "biasgame.suggestion.thanks-for-suggestion", msg.Author.Mention())
 
 	// create suggetion
 	suggestion := &models.BiasGameSuggestionEntry{
@@ -193,6 +192,10 @@ func ProcessImageSuggestion(msg *discordgo.Message, msgContent string, groupIdol
 	suggestionQueue = append(suggestionQueue, suggestion)
 	utils.MongoDBInsert(models.BiasGameSuggestionsTable, suggestion)
 	updateCurrentSuggestionEmbed()
+
+	// make a message and delete it immediatly. just to show that a new suggestion has come in
+	msg, _ = utils.SendMessage(IMAGE_SUGGESTION_CHANNEL, "New Suggestion Ping")
+	go utils.DeleteImageWithDelay(msg, time.Second*2)
 }
 
 // CheckSuggestionReaction will check if the reaction was added to a suggestion message
@@ -207,10 +210,20 @@ func CheckSuggestionReaction(reaction *discordgo.MessageReactionAdd) *drive.File
 
 	// check if the reaction was added to the suggestion embed message
 	if reaction.MessageID == suggestionEmbedMessageId {
+		if len(suggestionQueue) == 0 {
+			return nil
+		}
+
 		cs := suggestionQueue[0]
 
 		// update current page based on direction
 		if CHECKMARK_EMOJI == reaction.Emoji.Name {
+
+			// send processing image message
+			msg, err := utils.SendMessage(IMAGE_SUGGESTION_CHANNEL, "Uploading image to google drive...")
+			if err == nil {
+				defer cache.GetDiscordSession().ChannelMessageDelete(IMAGE_SUGGESTION_CHANNEL, msg.ID)
+			}
 
 			// make call to get suggestion image
 			res, err := pester.Get(cs.ImageURL)
@@ -244,26 +257,29 @@ func CheckSuggestionReaction(reaction *discordgo.MessageReactionAdd) *drive.File
 			}
 
 			// set image accepted image
-			userResponseMessage = fmt.Sprintf("Your image suggestion for `%s %s` has been APPROVED! Thank you again for the suggestion.", cs.GrouopName, cs.Name)
-
-			// update record
+			userResponseMessage = fmt.Sprintf("**Bias Game Suggestion Approved** <:SeemsBlob:422158571115905034>\nIdol: %s %s\nImage: <%s>", cs.GrouopName, cs.Name, cs.ImageURL)
 			cs.Status = "approved"
-			utils.MongoDBUpdate(models.BiasGameSuggestionsTable, cs.ID, cs)
 
 		} else if X_EMOJI == reaction.Emoji.Name {
 
 			// image was denied
-			userResponseMessage = fmt.Sprintf("Unfortunatly idol suggestion for `%s %s` has been denied.", cs.GrouopName, cs.Name)
-
-			// update record
+			userResponseMessage = fmt.Sprintf("**Bias Game Suggestion Denied** <:NotLikeBlob:422163995869315082>\nIdol: %s %s\nImage: <%s>", cs.GrouopName, cs.Name, cs.ImageURL)
 			cs.Status = "denied"
-			utils.MongoDBUpdate(models.BiasGameSuggestionsTable, cs.ID, cs)
 		}
 
+		// update db record
+		cs.ProcessedByUserId = reaction.UserID
+		cs.LastModifiedOn = time.Now()
+		go utils.MongoDBUpdate(models.BiasGameSuggestionsTable, cs.ID, cs)
+
+		// send a message to the user who suggested the image
 		dmChannel, err := cache.GetDiscordSession().UserChannelCreate(cs.UserID)
-		utils.SendMessage(dmChannel.ID, userResponseMessage)
-		if err != nil {
-			return nil
+		if err == nil {
+			// set notes if there are any
+			if cs.Notes != "" {
+				userResponseMessage += "\nNotes: " + cs.Notes
+			}
+			go utils.SendMessage(dmChannel.ID, userResponseMessage)
 		}
 
 		// delete first suggestion and process queue again
@@ -274,6 +290,40 @@ func CheckSuggestionReaction(reaction *discordgo.MessageReactionAdd) *drive.File
 	return approvedFiles
 }
 
+// UpdateSuggestionDetails
+func UpdateSuggestionDetails(msg *discordgo.Message, fieldToUpdate string, value string) {
+	if msg.ChannelID != IMAGE_SUGGESTION_CHANNEL {
+		return
+	}
+
+	if len(suggestionQueue) == 0 {
+		return
+	}
+
+	go utils.DeleteImageWithDelay(msg, time.Second)
+
+	cs := suggestionQueue[0]
+	fieldToUpdate = strings.ToLower(fieldToUpdate)
+
+	switch fieldToUpdate {
+	case "name":
+		cs.Name = value
+	case "group":
+		cs.GrouopName = value
+	case "gender":
+		cs.Gender = value
+	case "notes":
+		cs.Notes = value
+	default:
+		return
+	}
+
+	// save changes and update embed message
+	utils.MongoDBUpdate(models.BiasGameSuggestionsTable, cs.ID, cs)
+	updateCurrentSuggestionEmbed()
+}
+
+// updateCurrentSuggestionEmbed will re-render the embed message with the current suggestion if one exists
 func updateCurrentSuggestionEmbed() {
 	var embed *discordgo.MessageEmbed
 
@@ -315,6 +365,13 @@ func updateCurrentSuggestionEmbed() {
 			idolNameDisplay += " " + QUESTIONMARK_EMOJI
 		}
 
+		// check if notes are set, if not then display no notes entered.
+		//  discord embeds can't have empty field values
+		notesValue := cs.Notes
+		if notesValue == "" {
+			notesValue = "*No notes entered*"
+		}
+
 		embed = &discordgo.MessageEmbed{
 			Color: 0x0FADED, // blueish
 			Author: &discordgo.MessageEmbedAuthor{
@@ -354,6 +411,11 @@ func updateCurrentSuggestionEmbed() {
 					Value:  cs.ID.Time().Format("Jan 2, 2006 3:04pm (MST)"),
 					Inline: true,
 				},
+				{
+					Name:   "Notes",
+					Value:  notesValue,
+					Inline: true,
+				},
 			},
 		}
 	}
@@ -373,10 +435,6 @@ func updateCurrentSuggestionEmbed() {
 		cache.GetDiscordSession().MessageReactionAdd(IMAGE_SUGGESTION_CHANNEL, embedMsg.ID, CHECKMARK_EMOJI)
 		cache.GetDiscordSession().MessageReactionAdd(IMAGE_SUGGESTION_CHANNEL, embedMsg.ID, X_EMOJI)
 	}
-
-	// make a message and delete it immediatly. just to show that a new suggestion has come in
-	msg, _ := utils.SendMessage(IMAGE_SUGGESTION_CHANNEL, "New Suggestion Ping")
-	go utils.DeleteImageWithDelay(msg, time.Second*2)
 }
 
 // loadUnresolvedSuggestions
