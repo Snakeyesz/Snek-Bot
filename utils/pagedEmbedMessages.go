@@ -12,6 +12,7 @@ import (
 const (
 	LEFT_ARROW_EMOJI  = "⬅"
 	RIGHT_ARROW_EMOJI = "➡"
+	X_EMOJI           = "🇽"
 )
 
 // map of messageID to pagedEmbedMessage
@@ -25,6 +26,7 @@ type pagedEmbedMessage struct {
 	currentPage     int
 	fieldsPerPage   int
 	color           int
+	userId          string //user who triggered the message
 }
 
 func init() {
@@ -59,6 +61,7 @@ func SendPagedMessage(msg *discordgo.Message, embed *discordgo.MessageEmbed, fie
 		currentPage:     1,
 		fieldsPerPage:   fieldsPerPage,
 		totalNumOfPages: int(math.Ceil(float64(len(embed.Fields)) / float64(fieldsPerPage))),
+		userId:          msg.Author.ID,
 	}
 
 	pagedMessage.setupAndSendFirstMessage()
@@ -71,7 +74,16 @@ func SendPagedMessage(msg *discordgo.Message, embed *discordgo.MessageEmbed, fie
 //  reactions must be the left or right arrow
 func (p *pagedEmbedMessage) UpdateMessagePage(reaction *discordgo.MessageReactionAdd) {
 	// check for valid reaction
-	if LEFT_ARROW_EMOJI != reaction.Emoji.Name && RIGHT_ARROW_EMOJI != reaction.Emoji.Name {
+	if LEFT_ARROW_EMOJI != reaction.Emoji.Name && RIGHT_ARROW_EMOJI != reaction.Emoji.Name && X_EMOJI != reaction.Emoji.Name {
+		return
+	}
+
+	// check if user who made the embed message is closing it
+	if reaction.UserID == p.userId && X_EMOJI == reaction.Emoji.Name {
+		fmt.Println("delete message")
+		fmt.Println("user id: ", p.userId)
+		delete(pagedEmbededMessages, reaction.MessageID)
+		cache.GetDiscordSession().ChannelMessageDelete(p.channelID, p.messageID)
 		return
 	}
 
@@ -130,6 +142,7 @@ func (p *pagedEmbedMessage) setupAndSendFirstMessage() {
 
 	cache.GetDiscordSession().MessageReactionAdd(p.channelID, p.messageID, LEFT_ARROW_EMOJI)
 	cache.GetDiscordSession().MessageReactionAdd(p.channelID, p.messageID, RIGHT_ARROW_EMOJI)
+	cache.GetDiscordSession().MessageReactionAdd(p.channelID, p.messageID, X_EMOJI)
 }
 
 // getEmbedFooter is a simlple helper function to return the footer for the embed message
