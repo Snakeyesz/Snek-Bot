@@ -97,7 +97,13 @@ func listIdolsInGame(msg *discordgo.Message) {
 	// create map of idols and there group
 	groupIdolMap := make(map[string][]string)
 	for _, bias := range allBiasChoices {
-		groupIdolMap[bias.groupName] = append(groupIdolMap[bias.groupName], bias.biasName)
+		if len(bias.biasImages) > 1 {
+
+			groupIdolMap[bias.groupName] = append(groupIdolMap[bias.groupName], fmt.Sprintf("%s (%d)", bias.biasName, len(bias.biasImages)))
+		} else {
+
+			groupIdolMap[bias.groupName] = append(groupIdolMap[bias.groupName], fmt.Sprintf("%s", bias.biasName))
+		}
 	}
 
 	embed := &discordgo.MessageEmbed{
@@ -105,6 +111,7 @@ func listIdolsInGame(msg *discordgo.Message) {
 		Author: &discordgo.MessageEmbedAuthor{
 			Name: fmt.Sprintf("All Idols Available In Bias Game (%d total)", len(allBiasChoices)),
 		},
+		Title: "*Numbers indicate multi pictures are available for the idol*",
 	}
 
 	// make fields for each group and the idols in the group.

@@ -212,13 +212,13 @@ func (b *BiasGame) Action(command string, content string, msg *discordgo.Message
 
 		} else if commandArgs[0] == "suggest" {
 
-			// create map of group => idols in group
-			groupIdolMap := make(map[string][]string)
-			for _, bias := range allBiasChoices {
-				groupIdolMap[bias.groupName] = append(groupIdolMap[bias.groupName], bias.biasName)
-			}
+			// // create map of group => idols in group
+			// groupIdolMap := make(map[string][]string)
+			// for _, bias := range allBiasChoices {
+			// 	groupIdolMap[bias.groupName] = append(groupIdolMap[bias.groupName], bias.biasName)
+			// }
 
-			ProcessImageSuggestion(msg, content, groupIdolMap)
+			ProcessImageSuggestion(msg, content)
 
 		} else if commandArgs[0] == "current" {
 
@@ -301,10 +301,7 @@ func (b *BiasGame) ActionOnReactionAdd(reaction *discordgo.MessageReactionAdd) {
 
 	// check if this was a reaction to a idol suggestion.
 	//  if it was accepted an image will be returned to be added to the biasChoices
-	suggestedImageDriveFile := CheckSuggestionReaction(reaction)
-	if suggestedImageDriveFile != nil {
-		addDriveFileToAllBiases(suggestedImageDriveFile)
-	}
+	CheckSuggestionReaction(reaction)
 }
 
 /////////////////////////////////
